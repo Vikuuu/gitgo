@@ -23,6 +23,12 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %s", err)
 			os.Exit(1)
 		}
+	case "commit":
+		err := cmdCommitHandler()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s", err)
+			os.Exit(1)
+		}
 	default:
 		flag.Usage()
 	}
