@@ -1,22 +1,15 @@
 package main
 
 import (
-	"bytes"
-	"compress/zlib"
-	"crypto/sha1"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"slices"
+	"time"
 
-	"github.com/Vikuuu/gitgo/internal/utilites"
+	"github.com/Vikuuu/gitgo"
 )
 
 func cmdInitHandler(initPath string) error {
-	gitFolders := [2]string{"objects", "refs"}
-
 	wd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -27,7 +20,7 @@ func cmdInitHandler(initPath string) error {
 	}
 	gitPath := filepath.Join(wd, ".gitgo")
 
-	for _, folder := range gitFolders {
+	for _, folder := range gitgo.GitFolders {
 		err = os.MkdirAll(filepath.Join(gitPath, folder), 0755)
 		if err != nil {
 			return err
@@ -38,70 +31,78 @@ func cmdInitHandler(initPath string) error {
 	return nil
 }
 
-func cmdCommitHandler() error {
-	rootPath, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("Error getting pwd: %s", err)
-	}
-	gitPath := filepath.Join(rootPath, ".gitgo")
-	dbPath := filepath.Join(gitPath, "objects")
-
+func cmdCommitHandler(commit string) error {
 	// Get all the files in the working directory
-	workFiles, err := os.ReadDir(rootPath)
+	allFiles, err := os.ReadDir(gitgo.ROOTPATH)
 	if err != nil {
 		return fmt.Errorf("Error reading Dir: %s", err)
 	}
+	workFiles := gitgo.RemoveIgnoreFiles(
+		allFiles,
+		gitgo.GITGO_IGNORE,
+	) // Remove the files or Dir that are in ignore.
 
+	var entries []gitgo.Entries
 	for _, file := range workFiles {
-		if file.Name() == ".gitgo" {
+		if file.IsDir() {
 			continue
 		}
-
 		data, err := os.ReadFile(file.Name())
 		if err != nil {
 			return fmt.Errorf("Error reading file: %s\n%s", file.Name(), err)
 		}
-		blobPrefix := fmt.Sprintf(`blob %d\0`, len(data))
-		// getting the SHA-1
-		h := sha1.New()
-		io.WriteString(h, blobPrefix)
-		io.WriteString(h, string(data))
-		// blobSHA := base64.URLEncoding.EncodeToString(h.Sum(nil))
-		blobSHA := hex.EncodeToString(h.Sum(nil))
 
-		var blob bytes.Buffer
-		w := zlib.NewWriter(&blob)
-		w.Write(slices.Concat([]byte(blobPrefix), data))
-		w.Close()
+		blobSHA, err := gitgo.StoreBlobObject(data)
 
-		err = os.MkdirAll(filepath.Join(dbPath, string(blobSHA[:2])), 0755)
-		if err != nil {
-			return fmt.Errorf("Error creating Dir: %s", err)
-		}
-
-		// Create a temp file for writing
-		tName := utilites.GenerateGitTempFileName(".temp-obj-")
-		tempName := filepath.Join(dbPath, string(blobSHA[:2]), tName)
-		tf, err := os.OpenFile(
-			tempName,
-			os.O_RDWR|os.O_CREATE|os.O_EXCL,
-			0644,
-		)
-		defer tf.Close()
-		if err != nil {
-			return fmt.Errorf("Error creating tempFile: %s", err)
-		}
-
-		// Write to the temp file
-		_, err = tf.Write(blob.Bytes())
-		if err != nil {
-			return fmt.Errorf("Error writing to temp file: %s", err)
-		}
-
-		// Rename the file
-		permName := filepath.Join(dbPath, string(blobSHA[:2]), string(blobSHA[2:]))
-		os.Rename(tempName, permName)
+		entries = append(entries, gitgo.Entries{
+			Path: file.Name(),
+			OID:  blobSHA,
+		})
 	}
+
+	// create the tree entry.
+	treeEntry := gitgo.CreateTreeEntry(entries)
+	// store the tree data in the .gitgo/objects
+	treeHash, err := gitgo.StoreTreeObject(treeEntry)
+	if err != nil {
+		return err
+	}
+
+	name := os.Getenv("GITGO_AUTHOR_NAME")
+	email := os.Getenv("GITGO_AUTHOR_EMAIL")
+	authorData := gitgo.Author{
+		Name:      name,
+		Email:     email,
+		Timestamp: time.Now(),
+	}
+	author := authorData.New()
+	message := gitgo.ReadStdinMsg()
+
+	commitData := gitgo.Commit{
+		TreeOID: treeHash,
+		Author:  author,
+		Message: message,
+	}.New()
+	cHash, err := gitgo.StoreCommitObject(commitData)
+	if err != nil {
+		return err
+	}
+
+	HeadFile, err := os.OpenFile(
+		filepath.Join(gitgo.GITPATH, "HEAD"),
+		os.O_WRONLY|os.O_CREATE,
+		0644,
+	)
+	if err != nil {
+		return fmt.Errorf("Err creating HEAD file: %s", err)
+	}
+	defer HeadFile.Close()
+
+	_, err = HeadFile.WriteString(cHash)
+	if err != nil {
+		return fmt.Errorf("Err writing to HEAD file: %s", err)
+	}
+	fmt.Printf("root-commit  %s", cHash)
 
 	return nil
 }
