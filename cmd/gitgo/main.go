@@ -26,13 +26,13 @@ func main() {
 	case "init":
 		err := cmdInitHandler(*init)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %s", err)
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 			os.Exit(1)
 		}
 	case "commit":
 		err := cmdCommitHandler(*commit)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %s", err)
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 			os.Exit(1)
 		}
 	default:

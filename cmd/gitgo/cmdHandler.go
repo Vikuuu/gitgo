@@ -27,7 +27,7 @@ func cmdInitHandler(initPath string) error {
 		}
 	}
 
-	fmt.Fprintf(os.Stdout, "Initialized empty Gitgo repository in %s", gitPath)
+	fmt.Fprintf(os.Stdout, "Initialized empty Gitgo repository in %s\n", gitPath)
 	return nil
 }
 
@@ -76,8 +76,16 @@ func cmdCommitHandler(commit string) error {
 		Timestamp: time.Now(),
 	}.New()
 	message := gitgo.ReadStdinMsg()
+	refs := gitgo.RefInitialize(gitgo.GITPATH)
+	parent := refs.Read_head()
+	// now check this is first commit or not
+	is_root := ""
+	if parent == "" {
+		is_root = "(root-commit) "
+	}
 
 	commitData := gitgo.Commit{
+		Parent:  parent,
 		TreeOID: treeHash,
 		Author:  author,
 		Message: message,
@@ -86,6 +94,7 @@ func cmdCommitHandler(commit string) error {
 	if err != nil {
 		return err
 	}
+	refs.UpdateHead([]byte(cHash))
 
 	HeadFile, err := os.OpenFile(
 		filepath.Join(gitgo.GITPATH, "HEAD"),
@@ -101,7 +110,8 @@ func cmdCommitHandler(commit string) error {
 	if err != nil {
 		return fmt.Errorf("Err writing to HEAD file: %s", err)
 	}
-	fmt.Printf("root-commit  %s", cHash)
+
+	fmt.Printf("%s %s %s", is_root, cHash, message)
 
 	return nil
 }

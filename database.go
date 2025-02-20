@@ -20,6 +20,7 @@ type Author struct {
 }
 
 type Commit struct {
+	Parent  string
 	TreeOID string
 	Author  string
 	Message string
@@ -32,13 +33,15 @@ func (a Author) New() string {
 }
 
 func (c Commit) New() string {
-	lines := []string{
-		fmt.Sprintf("tree %s", c.TreeOID),
-		fmt.Sprintf("author %s", c.Author),
-		fmt.Sprintf("comitter %s", c.Author),
-		"",
-		c.Message,
+	lines := []string{}
+	lines = append(lines, fmt.Sprintf("tree %s", c.TreeOID))
+	if c.Parent != "" {
+		lines = append(lines, fmt.Sprintf("parent %s", c.Parent))
 	}
+	lines = append(lines, fmt.Sprintf("author %s", c.Author))
+	lines = append(lines, fmt.Sprintf("comitter %s", c.Author))
+	lines = append(lines, "")
+	lines = append(lines, c.Message)
 	return strings.Join(lines, "\n")
 }
 
