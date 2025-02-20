@@ -1,10 +1,10 @@
 package gitgo
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,9 +50,8 @@ func (c Commit) Type() string {
 }
 
 func ReadStdinMsg() string {
-	reader := bufio.NewReader(os.Stdin)
-	msg, _ := reader.ReadString('\n')
-	return msg
+	msg, _ := io.ReadAll(os.Stdin)
+	return string(msg)
 }
 
 type Entries struct {
