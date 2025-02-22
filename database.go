@@ -127,6 +127,12 @@ func StoreObject(
 		return err
 	}
 
+	// if the file exists exit
+	_, err = os.Stat(PermPath)
+	if os.IsExist(err) {
+		return nil
+	}
+
 	// Create a temp file for writing
 	tName := generateGitTempFileName(".temp-obj-")
 	tempPath := filepath.Join(folderPath, tName)
