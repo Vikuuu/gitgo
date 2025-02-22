@@ -1,9 +1,13 @@
 package gitgo
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 )
+
+var ErrLockDenied = errors.New("Lock Denied")
 
 type ref struct {
 	pathname string
@@ -17,17 +21,15 @@ func RefInitialize(pathname string) ref {
 }
 
 func (r ref) UpdateHead(oid []byte) error {
-	flags := os.O_WRONLY | os.O_CREATE
-	refFile, err := os.OpenFile(r.head_path(), flags, 0644)
-	if err != nil {
-		return err
-	}
-	defer refFile.Close()
+	lockfile := lockInitialize(r.headPath)
 
-	_, err = refFile.Write(oid)
-	if err != nil {
-		return err
+	if lock, _ := lockfile.holdForUpdate(); !lock {
+		return fmt.Errorf("Err: %s\nCould not aquire lock on file: %s", ErrLockDenied, r.headPath)
 	}
+
+	oid = append(oid, '\n')
+	lockfile.write(oid)
+	lockfile.commit()
 
 	return nil
 }

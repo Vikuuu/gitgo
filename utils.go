@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -53,4 +54,9 @@ func getUTCOffset(t time.Time) string {
 	}
 
 	return fmt.Sprintf("%s%02d%02d", sign, offsetHour, offsetMin)
+}
+
+func FirstLine(s string) string {
+	firstLine, _, _ := strings.Cut(s, "\n")
+	return firstLine
 }

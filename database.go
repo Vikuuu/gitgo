@@ -63,7 +63,7 @@ func StoreTreeObject(treeEntry bytes.Buffer) (string, error) {
 	treePrefix := fmt.Sprintf(`tree %d`, treeEntry.Len())
 	treeSHA := getHash(treePrefix, treeEntry.String())
 	hexTreeSha := hex.EncodeToString(treeSHA)
-	fmt.Printf("Tree: %s", hexTreeSha)
+	// fmt.Printf("Tree: %s", hexTreeSha)
 	tree := getCompressBuf([]byte(treePrefix), treeEntry.Bytes())
 	folderPath := filepath.Join(DBPATH, hexTreeSha[:2])
 	permPath := filepath.Join(DBPATH, hexTreeSha[:2], hexTreeSha[2:])

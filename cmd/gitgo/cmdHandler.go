@@ -111,7 +111,7 @@ func cmdCommitHandler(commit string) error {
 		return fmt.Errorf("Err writing to HEAD file: %s", err)
 	}
 
-	fmt.Printf("%s %s %s", is_root, cHash, message)
+	fmt.Fprintf(os.Stdout, "%s %s %s\n", is_root, cHash, gitgo.FirstLine(message))
 
 	return nil
 }
