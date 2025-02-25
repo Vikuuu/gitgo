@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -57,6 +58,7 @@ func ReadStdinMsg() string {
 type Entries struct {
 	Path string
 	OID  []byte
+	Stat string
 }
 
 func StoreTreeObject(treeEntry bytes.Buffer) (string, error) {
@@ -109,7 +111,8 @@ func StoreCommitObject(commitData string) (string, error) {
 func CreateTreeEntry(entries []Entries) bytes.Buffer {
 	var buf bytes.Buffer
 	for _, entry := range entries {
-		input := fmt.Sprintf("100644 %s", entry.Path)
+		input := fmt.Sprintf("%s %s", entry.Stat, entry.Path)
+		fmt.Printf("Entry stat: %s\n", entry.Stat)
 		buf.WriteString(input)
 		buf.WriteByte(0)
 		buf.Write(entry.OID)
@@ -155,4 +158,15 @@ func StoreObject(
 	// rename the file
 	os.Rename(tempPath, PermPath)
 	return nil
+}
+
+func FileMode(file os.DirEntry) (uint32, error) {
+	f, err := os.Stat(file.Name())
+	if err != nil {
+		return 0, err
+	}
+	// getting the stat from the underlying syscall
+	// it will only work for unix like operating systems
+	stat := f.Sys().(*syscall.Stat_t)
+	return stat.Mode, nil
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/Vikuuu/gitgo"
@@ -52,12 +53,21 @@ func cmdCommitHandler(commit string) error {
 			return fmt.Errorf("Error reading file: %s\n%s", file.Name(), err)
 		}
 
+		fileMode, err := gitgo.FileMode(file)
+		fmt.Printf("File: %s Mode: %o", file.Name(), fileMode)
+		if err != nil {
+			return err
+		}
+
 		blobSHA, err := gitgo.StoreBlobObject(data)
 
-		entries = append(entries, gitgo.Entries{
+		entry := gitgo.Entries{
 			Path: file.Name(),
 			OID:  blobSHA,
-		})
+			Stat: strconv.FormatUint(uint64(fileMode), 8),
+		}
+		// entry.Mode(fileMode)
+		entries = append(entries, entry)
 	}
 
 	// create the tree entry.
