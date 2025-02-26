@@ -53,27 +53,31 @@ func cmdCommitHandler(commit string) error {
 			return fmt.Errorf("Error reading file: %s\n%s", file.Name(), err)
 		}
 
+		blob := gitgo.BlobInitialize(data)
+
 		fileMode, err := gitgo.FileMode(file)
 		fmt.Printf("File: %s Mode: %o", file.Name(), fileMode)
 		if err != nil {
 			return err
 		}
 
-		blobSHA, err := gitgo.StoreBlobObject(data)
+		blobHash, err := blob.Store()
+		// blobSHA, err := gitgo.StoreBlobObject(data)
 
 		entry := gitgo.Entries{
 			Path: file.Name(),
-			OID:  blobSHA,
+			OID:  blobHash,
 			Stat: strconv.FormatUint(uint64(fileMode), 8),
 		}
 		// entry.Mode(fileMode)
 		entries = append(entries, entry)
 	}
 
+	tree := gitgo.TreeInitialize(gitgo.CreateTreeEntry(entries))
 	// create the tree entry.
-	treeEntry := gitgo.CreateTreeEntry(entries)
+	// treeEntry :=
 	// store the tree data in the .gitgo/objects
-	treeHash, err := gitgo.StoreTreeObject(treeEntry)
+	treeHash, err := tree.Store()
 	if err != nil {
 		return err
 	}
@@ -100,7 +104,7 @@ func cmdCommitHandler(commit string) error {
 		Author:  author,
 		Message: message,
 	}.New()
-	cHash, err := gitgo.StoreCommitObject(commitData)
+	cHash, err := commitData.Store()
 	if err != nil {
 		return err
 	}

@@ -25,6 +25,8 @@ type Commit struct {
 	TreeOID string
 	Author  string
 	Message string
+	Data    string
+	Prefix  string
 }
 
 func (a Author) New() string {
@@ -33,7 +35,7 @@ func (a Author) New() string {
 	return fmt.Sprintf("%s <%s> %d %s", a.Name, a.Email, unixTimeStamp, utcOffset)
 }
 
-func (c Commit) New() string {
+func (c Commit) New() *Commit {
 	lines := []string{}
 	lines = append(lines, fmt.Sprintf("tree %s", c.TreeOID))
 	if c.Parent != "" {
@@ -43,7 +45,9 @@ func (c Commit) New() string {
 	lines = append(lines, fmt.Sprintf("comitter %s", c.Author))
 	lines = append(lines, "")
 	lines = append(lines, c.Message)
-	return strings.Join(lines, "\n")
+	c.Data = strings.Join(lines, "\n")
+	c.Prefix = fmt.Sprintf(`commit %d`, len(c.Data))
+	return &c
 }
 
 func (c Commit) Type() string {
@@ -61,31 +65,69 @@ type Entries struct {
 	Stat string
 }
 
-func StoreTreeObject(treeEntry bytes.Buffer) (string, error) {
-	treePrefix := fmt.Sprintf(`tree %d`, treeEntry.Len())
-	treeSHA := getHash(treePrefix, treeEntry.String())
+type Blob struct {
+	Prefix string
+	Data   []byte
+}
+
+type Tree struct {
+	Prefix string
+	Data   bytes.Buffer
+}
+
+func BlobInitialize(data []byte) *Blob {
+	prefix := fmt.Sprintf(`blob %d`, len(data))
+	return &Blob{
+		Prefix: prefix,
+		Data:   data,
+	}
+}
+
+func TreeInitialize(data bytes.Buffer) *Tree {
+	prefix := fmt.Sprintf(`tree %d`, data.Len())
+	return &Tree{
+		Prefix: prefix,
+		Data:   data,
+	}
+}
+
+func (b *Blob) Store() ([]byte, error) {
+	return StoreBlobObject(b.Data, b.Prefix)
+}
+
+func (t *Tree) Store() (string, error) {
+	return StoreTreeObject(t.Data, t.Prefix)
+}
+
+func (c *Commit) Store() (string, error) {
+	return StoreCommitObject(c.Data, c.Prefix)
+}
+
+func StoreTreeObject(treeEntry bytes.Buffer, prefix string) (string, error) {
+	// treePrefix := fmt.Sprintf(`tree %d`, treeEntry.Len())
+	treeSHA := getHash(prefix, treeEntry.String())
 	hexTreeSha := hex.EncodeToString(treeSHA)
 	// fmt.Printf("Tree: %s", hexTreeSha)
-	tree := getCompressBuf([]byte(treePrefix), treeEntry.Bytes())
+	tree := getCompressBuf([]byte(prefix), treeEntry.Bytes())
 	folderPath := filepath.Join(DBPATH, hexTreeSha[:2])
 	permPath := filepath.Join(DBPATH, hexTreeSha[:2], hexTreeSha[2:])
-	err := StoreObject(tree, treePrefix, folderPath, permPath)
+	err := StoreObject(tree, prefix, folderPath, permPath)
 	if err != nil {
 		return "", err
 	}
 	return hexTreeSha, nil
 }
 
-func StoreBlobObject(blobData []byte) ([]byte, error) {
-	blobPrefix := fmt.Sprintf(`blob %d`, len(blobData))
+func StoreBlobObject(blobData []byte, prefix string) ([]byte, error) {
+	// blobPrefix := fmt.Sprintf(`blob %d`, len(blobData))
 
 	// getting the SHA-1
-	blobSHA := getHash(blobPrefix, string(blobData)) // []byte
-	blob := getCompressBuf([]byte(blobPrefix), blobData)
+	blobSHA := getHash(prefix, string(blobData)) // []byte
+	blob := getCompressBuf([]byte(prefix), blobData)
 	hexBlobSha := hex.EncodeToString(blobSHA)
 	folderPath := filepath.Join(DBPATH, hexBlobSha[:2])
 	permPath := filepath.Join(DBPATH, hexBlobSha[:2], hexBlobSha[2:])
-	err := StoreObject(blob, blobPrefix, folderPath, permPath)
+	err := StoreObject(blob, prefix, folderPath, permPath)
 	if err != nil {
 		return nil, err
 	}
@@ -93,14 +135,14 @@ func StoreBlobObject(blobData []byte) ([]byte, error) {
 	return blobSHA, nil
 }
 
-func StoreCommitObject(commitData string) (string, error) {
-	commitPrefix := fmt.Sprintf(`commit %d`, len(commitData))
-	commitHash := getHash(commitPrefix, commitData)
-	commit := getCompressBuf([]byte(commitPrefix), []byte(commitData))
+func StoreCommitObject(commitData, prefix string) (string, error) {
+	// commitPrefix := fmt.Sprintf(`commit %d`, len(commitData))
+	commitHash := getHash(prefix, commitData)
+	commit := getCompressBuf([]byte(prefix), []byte(commitData))
 	hexCommitHash := hex.EncodeToString(commitHash)
 	folderPath := filepath.Join(DBPATH, hexCommitHash[:2])
 	permPath := filepath.Join(DBPATH, hexCommitHash[:2], hexCommitHash[2:])
-	err := StoreObject(commit, commitPrefix, folderPath, permPath)
+	err := StoreObject(commit, prefix, folderPath, permPath)
 	if err != nil {
 		return "", err
 	}
