@@ -115,17 +115,18 @@ func cmdCommitHandler(commit string) error {
 		os.O_WRONLY|os.O_CREATE,
 		0644,
 	)
+func cmdCatFileHandler(hash string) error {
+	folderPath, filePath := hash[:2], hash[2:]
+	b, err := os.ReadFile(filepath.Join(gitgo.ROOTPATH, ".gitgo/objects", folderPath, filePath))
 	if err != nil {
-		return fmt.Errorf("Err creating HEAD file: %s", err)
-	}
-	defer HeadFile.Close()
-
-	_, err = HeadFile.WriteString(cHash)
-	if err != nil {
-		return fmt.Errorf("Err writing to HEAD file: %s", err)
+		return err
 	}
 
-	fmt.Fprintf(os.Stdout, "%s %s %s\n", is_root, cHash, gitgo.FirstLine(message))
+	data, err := gitgo.GetDecompress(b)
+	if err != nil {
+		return err
+	}
 
+	fmt.Fprintln(os.Stdout, string(data))
 	return nil
 }
