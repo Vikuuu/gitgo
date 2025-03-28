@@ -7,12 +7,19 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 )
 
 var GITGO_IGNORE = []string{".", "..", ".gitgo"}
+
+var g_ignore = map[string]bool{
+	".":      true,
+	"..":     true,
+	".gitgo": true,
+}
 
 type Author struct {
 	Name      string
@@ -59,43 +66,33 @@ func ReadStdinMsg() string {
 	return string(msg)
 }
 
-type Entries struct {
-	Path string
-	OID  []byte
-	Stat string
-}
-
 type Blob struct {
 	Prefix string
 	Data   []byte
 }
 
-type Tree struct {
+type TreeBlob struct {
 	Prefix string
 	Data   bytes.Buffer
 }
 
-func BlobInitialize(data []byte) *Blob {
-	prefix := fmt.Sprintf(`blob %d`, len(data))
-	return &Blob{
-		Prefix: prefix,
-		Data:   data,
-	}
+func (b Blob) Init() *Blob {
+	prefix := fmt.Sprintf(`blob %d`, len(b.Data))
+	b.Prefix = prefix
+	return &b
 }
 
-func TreeInitialize(data bytes.Buffer) *Tree {
-	prefix := fmt.Sprintf(`tree %d`, data.Len())
-	return &Tree{
-		Prefix: prefix,
-		Data:   data,
-	}
+func (t TreeBlob) Init() *TreeBlob {
+	prefix := fmt.Sprintf(`tree %d`, t.Data.Len())
+	t.Prefix = prefix
+	return &t
 }
 
-func (b *Blob) Store() ([]byte, error) {
+func (b *Blob) Store() (string, error) {
 	return StoreBlobObject(b.Data, b.Prefix)
 }
 
-func (t *Tree) Store() (string, error) {
+func (t *TreeBlob) Store() (string, error) {
 	return StoreTreeObject(t.Data, t.Prefix)
 }
 
@@ -118,7 +115,7 @@ func StoreTreeObject(treeEntry bytes.Buffer, prefix string) (string, error) {
 	return hexTreeSha, nil
 }
 
-func StoreBlobObject(blobData []byte, prefix string) ([]byte, error) {
+func StoreBlobObject(blobData []byte, prefix string) (string, error) {
 	// blobPrefix := fmt.Sprintf(`blob %d`, len(blobData))
 
 	// getting the SHA-1
@@ -129,10 +126,10 @@ func StoreBlobObject(blobData []byte, prefix string) ([]byte, error) {
 	permPath := filepath.Join(DBPATH, hexBlobSha[:2], hexBlobSha[2:])
 	err := StoreObject(blob, prefix, folderPath, permPath)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	return blobSHA, nil
+	return hexBlobSha, nil
 }
 
 func StoreCommitObject(commitData, prefix string) (string, error) {
@@ -148,19 +145,6 @@ func StoreCommitObject(commitData, prefix string) (string, error) {
 	}
 
 	return hexCommitHash, nil
-}
-
-func CreateTreeEntry(entries []Entries) bytes.Buffer {
-	var buf bytes.Buffer
-	for _, entry := range entries {
-		input := fmt.Sprintf("%s %s", entry.Stat, entry.Path)
-		fmt.Printf("Entry stat: %s\n", entry.Stat)
-		buf.WriteString(input)
-		buf.WriteByte(0)
-		buf.Write(entry.OID)
-		// buf.WriteString("\n")
-	}
-	return buf
 }
 
 func StoreObject(
@@ -187,14 +171,14 @@ func StoreObject(
 		0644,
 	)
 	if err != nil {
-		return fmt.Errorf("Err creating temp file: %s", err)
+		return fmt.Errorf("creating temp file: %s", err)
 	}
 	defer tf.Close()
 
 	// Write to temp file
 	_, err = tf.Write(data.Bytes())
 	if err != nil {
-		return fmt.Errorf("Err writing to temp file: %s", err)
+		return fmt.Errorf("writing to temp file: %s", err)
 	}
 
 	// rename the file
@@ -202,8 +186,8 @@ func StoreObject(
 	return nil
 }
 
-func FileMode(file os.DirEntry) (uint32, error) {
-	f, err := os.Stat(file.Name())
+func FileMode(file string) (uint32, error) {
+	f, err := os.Stat(file)
 	if err != nil {
 		return 0, err
 	}
@@ -211,4 +195,43 @@ func FileMode(file os.DirEntry) (uint32, error) {
 	// it will only work for unix like operating systems
 	stat := f.Sys().(*syscall.Stat_t)
 	return stat.Mode, nil
+}
+
+func StoreOnDisk(path string) ([]Entries, error) {
+	files, err := ListFiles(path)
+	if err != nil {
+		return nil, err
+	}
+	var entries []Entries
+	for _, f := range files {
+		err = blobStore(f, &entries)
+		if err != nil {
+			return nil, fmt.Errorf("from storeOndisk %s", err)
+		}
+	}
+
+	return entries, nil
+}
+
+func blobStore(f string, entries *[]Entries) error {
+	fp := filepath.Join(ROOTPATH, f)
+	data, err := os.ReadFile(fp)
+	if err != nil {
+		return err
+	}
+	blob := Blob{Data: data}.Init()
+	fileMode, err := FileMode(fp)
+	if err != nil {
+		return err
+	}
+
+	hash, err := blob.Store()
+	entry := Entries{
+		Path: f,
+		OID:  hash,
+		Stat: strconv.FormatUint(uint64(fileMode), 8),
+	}
+
+	*entries = append(*entries, entry)
+	return nil
 }
