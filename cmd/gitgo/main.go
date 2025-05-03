@@ -36,6 +36,12 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 			os.Exit(1)
 		}
+	case "add":
+		err := cmdAddHandler(os.Args[2:])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+			os.Exit(1)
+		}
 	case "cat":
 		fileHash := os.Args[2]
 		err := cmdCatFileHandler(fileHash)

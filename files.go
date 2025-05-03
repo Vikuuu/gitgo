@@ -3,6 +3,7 @@ package gitgo
 import (
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 )
 
@@ -12,8 +13,26 @@ func ListFiles(dir string) ([]string, error) {
 
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return fmt.Errorf("from listFiles %s", err)
+			return fmt.Errorf("from WalkDir %s", err)
 		}
+
+		// check if the given dir string is file or dir ?
+		s, err := os.Stat(path)
+		if !s.IsDir() {
+			relPath, err := filepath.Rel(dir, path)
+			if err != nil {
+				return fmt.Errorf("rel path of file: %s", err)
+			}
+			if relPath == "." {
+				relPath, err = filepath.Rel(ROOTPATH, path)
+				if err != nil {
+					return fmt.Errorf("rel path for '.': %s", err)
+				}
+				workfiles = append(workfiles, relPath)
+				return nil
+			}
+		}
+
 		name := filepath.Base(path)
 		// skip the files or directories found in the ignore hashmap
 		if _, found := g_ignore[name]; found {
@@ -25,7 +44,10 @@ func ListFiles(dir string) ([]string, error) {
 
 		// Append only files, not directories
 		if !d.IsDir() {
-			relPath, _ := filepath.Rel(dir, path)
+			relPath, err := filepath.Rel(ROOTPATH, path)
+			if err != nil {
+				return err
+			}
 			workfiles = append(workfiles, relPath)
 		}
 

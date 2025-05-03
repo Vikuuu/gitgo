@@ -100,3 +100,50 @@ func cmdCatFileHandler(hash string) error {
 	fmt.Fprintln(os.Stdout, string(data))
 	return nil
 }
+
+func cmdAddHandler(args []string) error {
+	index := gitgo.NewIndex()
+	for _, path := range args {
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		expandPaths, err := gitgo.ListFiles(absPath)
+		if err != nil {
+			return err
+		}
+		for _, p := range expandPaths {
+			ap, err := filepath.Abs(p)
+			if err != nil {
+				return err
+			}
+
+			data, err := os.ReadFile(ap)
+			if err != nil {
+				return err
+			}
+			stat, err := os.Stat(ap)
+			if err != nil {
+				return err
+			}
+
+			blob := gitgo.Blob{Data: data}.Init()
+			hash, err := blob.Store()
+			if err != nil {
+				return err
+			}
+
+			index.Add(p, hash, stat)
+		}
+	}
+	res, err := index.WriteUpdate()
+	if err != nil {
+		return err
+	}
+
+	if res {
+		fmt.Println("Written data to Index file")
+	}
+
+	return nil
+}
