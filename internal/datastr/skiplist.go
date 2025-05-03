@@ -135,11 +135,12 @@ func (s *SkipList) shrink() {
 }
 
 func (it *skipIterator) Next() bool {
-	if it.curr == nil {
+	next := it.curr.tower[0]
+	if next == nil {
 		return false
 	}
-	it.curr = it.curr.tower[0]
-	return it.curr != nil
+	it.curr = next
+	return true
 }
 
 func (it *skipIterator) Key() string {
