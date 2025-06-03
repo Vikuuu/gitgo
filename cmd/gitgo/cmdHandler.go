@@ -32,15 +32,17 @@ func cmdInitHandler(initPath string) error {
 }
 
 func cmdCommitHandler(_ string) error {
-	rootPath := gitgo.ROOTPATH
+	// rootPath := gitgo.ROOTPATH
 	// storing all the blobs first
-	entries, err := gitgo.StoreOnDisk(rootPath)
-	if err != nil {
-		return err
-	}
+	// entries, err := gitgo.StoreOnDisk(rootPath)
+	// if err != nil {
+	// 	return err
+	// }
 	// build merkel tree, and store all the subdirectories
 	// tree file
-	tree := gitgo.BuildTree(entries)
+	index := gitgo.NewIndex()
+	index.Load()
+	tree := gitgo.BuildTree(index.Entries())
 	e, err := gitgo.TraverseTree(tree)
 	if err != nil {
 		return err
@@ -82,6 +84,12 @@ func cmdCommitHandler(_ string) error {
 	refs.UpdateHead([]byte(cHash))
 	fmt.Fprintf(os.Stdout, "%s %s %s\n", is_root, cHash, gitgo.FirstLine(message))
 
+	// clear the file after the commit is done
+	err = os.Remove(filepath.Join(gitgo.GITPATH, "index"))
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -102,7 +110,8 @@ func cmdCatFileHandler(hash string) error {
 }
 
 func cmdAddHandler(args []string) error {
-	index := gitgo.NewIndex()
+	// index := gitgo.NewIndex()
+	_, index := gitgo.IndexHoldForUpdate()
 	for _, path := range args {
 		absPath, err := filepath.Abs(path)
 		if err != nil {

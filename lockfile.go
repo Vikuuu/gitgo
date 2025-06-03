@@ -81,6 +81,18 @@ func (l *lockFile) commit() {
 	l.Lock = nil
 }
 
+func (l *lockFile) rollback() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	err := os.Remove(l.FilePath)
+	if err != nil {
+		return err
+	}
+	l.Lock = nil
+	return nil
+}
+
 func (l *lockFile) errOnStaleLock() {
 	if l.Lock == nil {
 		log.Fatalf("Err: %s\nNot holding lock on file: %s", ErrStaleLock, l.LockPath)
