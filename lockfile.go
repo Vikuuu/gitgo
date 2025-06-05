@@ -85,7 +85,7 @@ func (l *lockFile) rollback() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	err := os.Remove(l.FilePath)
+	err := os.Remove(l.LockPath)
 	if err != nil {
 		return err
 	}
