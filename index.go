@@ -423,3 +423,5 @@ func writeIndexEntry(entry IndexEntry) ([]byte, error) {
 	}
 	return b.Bytes(), nil
 }
+
+func (i *Index) Release() error { return i.lockfile.rollback() }

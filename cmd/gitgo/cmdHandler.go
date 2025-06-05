@@ -112,6 +112,9 @@ func cmdCatFileHandler(hash string) error {
 func cmdAddHandler(args []string) error {
 	// index := gitgo.NewIndex()
 	_, index := gitgo.IndexHoldForUpdate()
+	var filePaths []string
+
+	// add all the paths to a slice first
 	for _, path := range args {
 		absPath, err := filepath.Abs(path)
 		if err != nil {
@@ -119,32 +122,36 @@ func cmdAddHandler(args []string) error {
 		}
 		expandPaths, err := gitgo.ListFiles(absPath)
 		if err != nil {
+			index.Release()
 			return err
 		}
-		for _, p := range expandPaths {
-			ap, err := filepath.Abs(p)
-			if err != nil {
-				return err
-			}
-
-			data, err := os.ReadFile(ap)
-			if err != nil {
-				return err
-			}
-			stat, err := os.Stat(ap)
-			if err != nil {
-				return err
-			}
-
-			blob := gitgo.Blob{Data: data}.Init()
-			hash, err := blob.Store()
-			if err != nil {
-				return err
-			}
-
-			index.Add(p, hash, stat)
-		}
+		filePaths = append(filePaths, expandPaths...)
 	}
+
+	for _, p := range filePaths {
+		ap, err := filepath.Abs(p)
+		if err != nil {
+			return err
+		}
+
+		data, err := os.ReadFile(ap)
+		if err != nil {
+			return err
+		}
+		stat, err := os.Stat(ap)
+		if err != nil {
+			return err
+		}
+
+		blob := gitgo.Blob{Data: data}.Init()
+		hash, err := blob.Store()
+		if err != nil {
+			return err
+		}
+
+		index.Add(p, hash, stat)
+	}
+
 	res, err := index.WriteUpdate()
 	if err != nil {
 		return err

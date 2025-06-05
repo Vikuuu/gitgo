@@ -1,11 +1,14 @@
 package gitgo
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 )
+
+var ErrMissingFile = errors.New("no file with the name")
 
 // Returns the flatten directory structure
 func ListFiles(dir string) ([]string, error) {
@@ -18,6 +21,10 @@ func ListFiles(dir string) ([]string, error) {
 
 		// check if the given dir string is file or dir ?
 		s, err := os.Stat(path)
+		// if file is not present
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%w '%s'", ErrMissingFile, dir)
+		}
 		if !s.IsDir() {
 			relPath, err := filepath.Rel(dir, path)
 			if err != nil {
