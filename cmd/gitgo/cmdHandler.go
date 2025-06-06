@@ -136,6 +136,9 @@ func cmdAddHandler(args []string) error {
 
 		data, err := os.ReadFile(ap)
 		if err != nil {
+			if os.IsPermission(err) {
+				return fmt.Errorf("%w '%s'\nFatal: adding files failed", os.ErrPermission, p)
+			}
 			return err
 		}
 		stat, err := os.Stat(ap)
