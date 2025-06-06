@@ -111,7 +111,16 @@ func cmdCatFileHandler(hash string) error {
 
 func cmdAddHandler(args []string) error {
 	// index := gitgo.NewIndex()
-	_, index := gitgo.IndexHoldForUpdate()
+	_, index, err := gitgo.IndexHoldForUpdate()
+	if err != nil {
+		return fmt.Errorf(`
+Fatal: %w
+
+Another gitgo process seems to be running in this repository.
+Please make sure all processes are terminated then try again.
+If it still fails, a gitgo process may have crashed in this
+repository earlier: remove the file manually to continue.`, err)
+	}
 	var filePaths []string
 
 	// add all the paths to a slice first

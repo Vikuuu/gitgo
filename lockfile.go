@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"syscall"
 )
 
 var (
@@ -31,18 +32,23 @@ func lockInitialize(path string) *lockFile {
 func (l *lockFile) holdForUpdate() (bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
 	if l.Lock != nil {
 		return true, nil // lock already aquired
 	}
 
 	file, err := os.OpenFile(l.LockPath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
-		if os.IsExist(err) {
-			return false, nil
-		} else if os.IsNotExist(err) {
-			return false, ErrMissingParent
-		} else if os.IsPermission(err) {
-			return false, ErrNoPermission
+		var pathErr *os.PathError
+		if errors.As(err, &pathErr) {
+			switch pathErr.Err {
+			case syscall.EEXIST:
+				return false, ErrLockDenied
+			case syscall.ENOENT:
+				return false, ErrMissingParent
+			case syscall.EACCES:
+				return false, ErrNoPermission
+			}
 		}
 		return false, err
 	}

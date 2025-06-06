@@ -60,20 +60,20 @@ func (i *Index) Entries() []Entries {
 	return e
 }
 
-func IndexHoldForUpdate() (bool, *Index) {
+func IndexHoldForUpdate() (bool, *Index, error) {
 	index := NewIndex()
 	b, err := index.lockfile.holdForUpdate()
 	if err != nil {
-		return false, nil
+		return false, index, err
 	}
 	if !b {
-		return false, nil
+		return false, index, nil
 	}
 
 	// load the index file
 	err = index.Load()
 
-	return true, index
+	return true, index, nil
 }
 
 func (i *Index) Load() error {

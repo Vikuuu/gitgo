@@ -2,7 +2,6 @@ package gitgo
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -23,8 +22,8 @@ func RefInitialize(pathname string) ref {
 func (r ref) UpdateHead(oid []byte) error {
 	lockfile := lockInitialize(r.headPath)
 
-	if lock, _ := lockfile.holdForUpdate(); !lock {
-		return fmt.Errorf("Err: %s\nCould not aquire lock on file: %s", ErrLockDenied, r.headPath)
+	if _, err := lockfile.holdForUpdate(); err != nil {
+		return err
 	}
 
 	oid = append(oid, '\n')
