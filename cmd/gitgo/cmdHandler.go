@@ -9,62 +9,67 @@ import (
 	"github.com/Vikuuu/gitgo"
 )
 
-func cmdInitHandler(initPath string) error {
-	wd, err := os.Getwd()
-	if err != nil {
-		return err
+var gitgoFolders []string
+
+func cmdInitHandler(cmd command) int {
+	gitgoFolders = []string{"objects", "refs"}
+
+	initPath := cmd.repo.Path
+	var arg string = ""
+	if len(cmd.args) > 0 {
+		arg = cmd.args[0]
 	}
 
-	if len(initPath) > 0 {
-		wd = filepath.Join(wd, initPath)
+	if arg != "" {
+		initPath = filepath.Join(initPath, arg)
 	}
-	gitPath := filepath.Join(wd, ".gitgo")
+	gitPath := filepath.Join(initPath, ".gitgo")
 
-	for _, folder := range gitgo.GitFolders {
-		err = os.MkdirAll(filepath.Join(gitPath, folder), 0755)
+	for _, folder := range gitgoFolders {
+		err := os.MkdirAll(filepath.Join(gitPath, folder), 0755)
 		if err != nil {
-			return err
+			fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+			return 1
 		}
 	}
 
-	fmt.Fprintf(os.Stdout, "Initialized empty Gitgo repository in %s\n", gitPath)
-	return nil
+	fmt.Fprintf(cmd.stdout, "Initialized empty Gitgo repository in %s\n", gitPath)
+	return 0
 }
 
-func cmdCommitHandler(_ string) error {
-	// rootPath := gitgo.ROOTPATH
-	// storing all the blobs first
-	// entries, err := gitgo.StoreOnDisk(rootPath)
-	// if err != nil {
-	// 	return err
-	// }
-	// build merkel tree, and store all the subdirectories
-	// tree file
-	index := gitgo.NewIndex()
+func cmdCommitHandler(cmd command) int {
+	// The command `commit` reads the index file and then
+	// creates and merkel tree, and store all the sub-trees on the way
+	// The blob files are already being stored during the
+	// `add` command
+	index := gitgo.NewIndex(cmd.repo.GitPath)
 	index.Load()
-	tree := gitgo.BuildTree(index.Entries())
-	e, err := gitgo.TraverseTree(tree)
+	entries := index.Entries()
+	tree := gitgo.BuildTree(entries)
+	e, err := gitgo.TraverseTree(tree, cmd.repo.Database)
 	if err != nil {
-		return err
+		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
 	}
 	// now store the root tree
-	rootTree := gitgo.TreeBlob{Data: gitgo.CreateTreeEntry(e)}.Init()
+	rootTree := gitgo.TreeBlob{
+		Data:   gitgo.CreateTreeEntry(e),
+		DBPath: cmd.repo.Database,
+	}.Init()
 	treeHash, err := rootTree.Store()
 	if err != nil {
-		return err
+		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+		return 1
 	}
 
 	// storing commit object
-	name := os.Getenv("GITGO_AUTHOR_NAME")
-	email := os.Getenv("GITGO_AUTHOR_EMAIL")
 	author := gitgo.Author{
-		Name:      name,
-		Email:     email,
+		Name:      cmd.env["name"],
+		Email:     cmd.env["email"],
 		Timestamp: time.Now(),
 	}.New()
-	message := gitgo.ReadStdinMsg()
-	refs := gitgo.RefInitialize(gitgo.GITPATH)
-	parent := refs.Read_head()
+	message := gitgo.ReadStdinMsg(cmd.stdin)
+	refs := gitgo.RefInitialize(cmd.repo.Refs)
+	parent := refs.ReadHead()
 
 	is_root := ""
 	if parent == "" {
@@ -76,63 +81,82 @@ func cmdCommitHandler(_ string) error {
 		TreeOID: treeHash,
 		Author:  author,
 		Message: message,
+		DBPath:  cmd.repo.Database,
 	}.New()
 	cHash, err := commitData.Store()
 	if err != nil {
-		return err
+		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+		return 1
 	}
 	refs.UpdateHead([]byte(cHash))
-	fmt.Fprintf(os.Stdout, "%s %s %s\n", is_root, cHash, gitgo.FirstLine(message))
+	fmt.Fprintf(cmd.stdout, "%s %s %s\n", is_root, cHash, gitgo.FirstLine(message))
 
 	// clear the file after the commit is done
-	err = os.Remove(filepath.Join(gitgo.GITPATH, "index"))
+	err = os.Remove(cmd.repo.Index)
 	if err != nil {
-		return err
+		if os.IsNotExist(err) {
+			return 0
+		}
+
+		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+		return 1
 	}
 
-	return nil
+	return 0
 }
 
-func cmdCatFileHandler(hash string) error {
+func cmdCatFileHandler(cmd command) int {
+	if len(cmd.args) != 1 {
+		fmt.Fprintln(cmd.stderr, "error: no file hash provided")
+		return 1
+	}
+	hash := cmd.args[0]
+
 	folderPath, filePath := hash[:2], hash[2:]
-	b, err := os.ReadFile(filepath.Join(gitgo.ROOTPATH, ".gitgo/objects", folderPath, filePath))
+	b, err := os.ReadFile(filepath.Join(cmd.repo.Database, folderPath, filePath))
 	if err != nil {
-		return err
+		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+		return 1
 	}
 
 	data, err := gitgo.GetDecompress(b)
 	if err != nil {
-		return err
+		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+		return 1
 	}
 
-	fmt.Fprintln(os.Stdout, string(data))
-	return nil
+	fmt.Fprintln(cmd.stdout, string(data))
+	return 0
 }
 
-func cmdAddHandler(args []string) error {
+func cmdAddHandler(cmd command) int {
+	// gitgo.InitGlobals()
 	// index := gitgo.NewIndex()
-	_, index, err := gitgo.IndexHoldForUpdate()
+	_, index, err := gitgo.IndexHoldForUpdate(cmd.repo.GitPath)
 	if err != nil {
-		return fmt.Errorf(`
-Fatal: %w
+		fmt.Fprintf(cmd.stderr, `
+Fatal: %v
 
 Another gitgo process seems to be running in this repository.
 Please make sure all processes are terminated then try again.
 If it still fails, a gitgo process may have crashed in this
 repository earlier: remove the file manually to continue.`, err)
+		return 1
 	}
 	var filePaths []string
 
 	// add all the paths to a slice first
-	for _, path := range args {
+	for _, path := range cmd.args {
 		absPath, err := filepath.Abs(path)
 		if err != nil {
-			return err
+			fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+			return 1
 		}
-		expandPaths, err := gitgo.ListFiles(absPath)
+		expandPaths, err := gitgo.ListFiles(absPath, cmd.repo.Path)
 		if err != nil {
 			index.Release()
-			return err
+			fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+			return 1
 		}
 		filePaths = append(filePaths, expandPaths...)
 	}
@@ -140,25 +164,33 @@ repository earlier: remove the file manually to continue.`, err)
 	for _, p := range filePaths {
 		ap, err := filepath.Abs(p)
 		if err != nil {
-			return err
+			fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+			return 1
 		}
 
 		data, err := os.ReadFile(ap)
 		if err != nil {
 			if os.IsPermission(err) {
-				return fmt.Errorf("%w '%s'\nFatal: adding files failed", os.ErrPermission, p)
+				fmt.Fprintf(cmd.stderr, "%v '%s'\nfatal: adding files failed", os.ErrPermission, p)
+				return 1
 			}
-			return err
+			fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+			return 1
 		}
 		stat, err := os.Stat(ap)
 		if err != nil {
-			return err
+			fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+			return 1
 		}
 
-		blob := gitgo.Blob{Data: data}.Init()
+		blob := gitgo.Blob{
+			Data:   data,
+			DBPath: cmd.repo.Database,
+		}.Init()
 		hash, err := blob.Store()
 		if err != nil {
-			return err
+			fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+			return 1
 		}
 
 		index.Add(p, hash, stat)
@@ -166,12 +198,13 @@ repository earlier: remove the file manually to continue.`, err)
 
 	res, err := index.WriteUpdate()
 	if err != nil {
-		return err
+		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+		return 1
 	}
 
 	if res {
-		fmt.Println("Written data to Index file")
+		fmt.Fprintln(cmd.stdout, "Written data to Index file")
 	}
 
-	return nil
+	return 0
 }

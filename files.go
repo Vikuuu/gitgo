@@ -11,7 +11,7 @@ import (
 var ErrMissingFile = errors.New("no file with the name")
 
 // Returns the flatten directory structure
-func ListFiles(dir string) ([]string, error) {
+func ListFiles(dir string, rootPath string) ([]string, error) {
 	var workfiles []string
 
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -31,7 +31,7 @@ func ListFiles(dir string) ([]string, error) {
 				return fmt.Errorf("rel path of file: %s", err)
 			}
 			if relPath == "." {
-				relPath, err = filepath.Rel(ROOTPATH, path)
+				relPath, err = filepath.Rel(rootPath, path)
 				if err != nil {
 					return fmt.Errorf("rel path for '.': %s", err)
 				}
@@ -51,7 +51,7 @@ func ListFiles(dir string) ([]string, error) {
 
 		// Append only files, not directories
 		if !d.IsDir() {
-			relPath, err := filepath.Rel(ROOTPATH, path)
+			relPath, err := filepath.Rel(rootPath, path)
 			if err != nil {
 				return err
 			}

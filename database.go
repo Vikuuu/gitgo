@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -34,6 +33,7 @@ type Commit struct {
 	Message string
 	Data    string
 	Prefix  string
+	DBPath  string
 }
 
 func (a Author) New() string {
@@ -61,19 +61,21 @@ func (c Commit) Type() string {
 	return "commit"
 }
 
-func ReadStdinMsg() string {
-	msg, _ := io.ReadAll(os.Stdin)
+func ReadStdinMsg(file *os.File) string {
+	msg, _ := io.ReadAll(file)
 	return string(msg)
 }
 
 type Blob struct {
 	Prefix string
 	Data   []byte
+	DBPath string
 }
 
 type TreeBlob struct {
 	Prefix string
 	Data   bytes.Buffer
+	DBPath string
 }
 
 func (b Blob) Init() *Blob {
@@ -89,25 +91,25 @@ func (t TreeBlob) Init() *TreeBlob {
 }
 
 func (b *Blob) Store() (string, error) {
-	return StoreBlobObject(b.Data, b.Prefix)
+	return StoreBlobObject(b.Data, b.Prefix, b.DBPath)
 }
 
 func (t *TreeBlob) Store() (string, error) {
-	return StoreTreeObject(t.Data, t.Prefix)
+	return StoreTreeObject(t.Data, t.Prefix, t.DBPath)
 }
 
 func (c *Commit) Store() (string, error) {
-	return StoreCommitObject(c.Data, c.Prefix)
+	return StoreCommitObject(c.Data, c.Prefix, c.DBPath)
 }
 
-func StoreTreeObject(treeEntry bytes.Buffer, prefix string) (string, error) {
+func StoreTreeObject(treeEntry bytes.Buffer, prefix string, dbPath string) (string, error) {
 	// treePrefix := fmt.Sprintf(`tree %d`, treeEntry.Len())
 	treeSHA := getHash(prefix, treeEntry.String())
 	hexTreeSha := hex.EncodeToString(treeSHA)
 	// fmt.Printf("Tree: %s", hexTreeSha)
 	tree := getCompressBuf([]byte(prefix), treeEntry.Bytes())
-	folderPath := filepath.Join(DBPATH, hexTreeSha[:2])
-	permPath := filepath.Join(DBPATH, hexTreeSha[:2], hexTreeSha[2:])
+	folderPath := filepath.Join(dbPath, hexTreeSha[:2])
+	permPath := filepath.Join(dbPath, hexTreeSha[:2], hexTreeSha[2:])
 	err := StoreObject(tree, prefix, folderPath, permPath)
 	if err != nil {
 		return "", err
@@ -115,15 +117,15 @@ func StoreTreeObject(treeEntry bytes.Buffer, prefix string) (string, error) {
 	return hexTreeSha, nil
 }
 
-func StoreBlobObject(blobData []byte, prefix string) (string, error) {
+func StoreBlobObject(blobData []byte, prefix, dbPath string) (string, error) {
 	// blobPrefix := fmt.Sprintf(`blob %d`, len(blobData))
 
 	// getting the SHA-1
 	blobSHA := getHash(prefix, string(blobData)) // []byte
 	blob := getCompressBuf([]byte(prefix), blobData)
 	hexBlobSha := hex.EncodeToString(blobSHA)
-	folderPath := filepath.Join(DBPATH, hexBlobSha[:2])
-	permPath := filepath.Join(DBPATH, hexBlobSha[:2], hexBlobSha[2:])
+	folderPath := filepath.Join(dbPath, hexBlobSha[:2])
+	permPath := filepath.Join(dbPath, hexBlobSha[:2], hexBlobSha[2:])
 	err := StoreObject(blob, prefix, folderPath, permPath)
 	if err != nil {
 		return "", err
@@ -132,13 +134,13 @@ func StoreBlobObject(blobData []byte, prefix string) (string, error) {
 	return hexBlobSha, nil
 }
 
-func StoreCommitObject(commitData, prefix string) (string, error) {
+func StoreCommitObject(commitData, prefix, dbPath string) (string, error) {
 	// commitPrefix := fmt.Sprintf(`commit %d`, len(commitData))
 	commitHash := getHash(prefix, commitData)
 	commit := getCompressBuf([]byte(prefix), []byte(commitData))
 	hexCommitHash := hex.EncodeToString(commitHash)
-	folderPath := filepath.Join(DBPATH, hexCommitHash[:2])
-	permPath := filepath.Join(DBPATH, hexCommitHash[:2], hexCommitHash[2:])
+	folderPath := filepath.Join(dbPath, hexCommitHash[:2])
+	permPath := filepath.Join(dbPath, hexCommitHash[:2], hexCommitHash[2:])
 	err := StoreObject(commit, prefix, folderPath, permPath)
 	if err != nil {
 		return "", err
@@ -197,41 +199,41 @@ func FileMode(file string) (uint32, error) {
 	return stat.Mode, nil
 }
 
-func StoreOnDisk(path string) ([]Entries, error) {
-	files, err := ListFiles(path)
-	if err != nil {
-		return nil, err
-	}
-	var entries []Entries
-	for _, f := range files {
-		err = blobStore(f, &entries)
-		if err != nil {
-			return nil, fmt.Errorf("from storeOndisk %s", err)
-		}
-	}
-
-	return entries, nil
-}
-
-func blobStore(f string, entries *[]Entries) error {
-	fp := filepath.Join(ROOTPATH, f)
-	data, err := os.ReadFile(fp)
-	if err != nil {
-		return err
-	}
-	blob := Blob{Data: data}.Init()
-	fileMode, err := FileMode(fp)
-	if err != nil {
-		return err
-	}
-
-	hash, err := blob.Store()
-	entry := Entries{
-		Path: f,
-		OID:  hash,
-		Stat: strconv.FormatUint(uint64(fileMode), 8),
-	}
-
-	*entries = append(*entries, entry)
-	return nil
-}
+// func StoreOnDisk(path, rootPath, dbPath string) ([]Entries, error) {
+// 	files, err := ListFiles(path, rootPath)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	var entries []Entries
+// 	for _, f := range files {
+// 		err = blobStore(f, rootPath, dbPath, &entries)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("from storeOndisk %s", err)
+// 		}
+// 	}
+//
+// 	return entries, nil
+// }
+//
+// func blobStore(f, rootPath, dbPath string, entries *[]Entries) error {
+// 	fp := filepath.Join(rootPath, f)
+// 	data, err := os.ReadFile(fp)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	blob := Blob{Data: data, DBPath: dbPath}.Init()
+// 	fileMode, err := FileMode(fp)
+// 	if err != nil {
+// 		return err
+// 	}
+//
+// 	hash, err := blob.Store()
+// 	entry := Entries{
+// 		Path: f,
+// 		OID:  hash,
+// 		Stat: strconv.FormatUint(uint64(fileMode), 8),
+// 	}
+//
+// 	*entries = append(*entries, entry)
+// 	return nil
+// }

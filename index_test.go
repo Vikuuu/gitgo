@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 
@@ -35,8 +36,9 @@ func thisFileStat(t *testing.T) os.FileInfo {
 func TestAddSingleFile(t *testing.T) {
 	// create a temporary directory for this test
 	tmpDir := t.TempDir()
-	ROOTPATH = tmpDir
-	idx := NewIndex()
+	rootPath := tmpDir
+	gitPath := filepath.Join(rootPath, ".gitgo")
+	idx := NewIndex(gitPath)
 
 	oid := randomOID()
 	// if err := idx.Add("alice.txt", oid, fi); err != nil {
@@ -60,7 +62,7 @@ func TestAddSingleFile(t *testing.T) {
 }
 
 func TestReplaceFileWithDir(t *testing.T) {
-	index := NewIndex()
+	index := NewIndex("/tmp")
 
 	index.Add("alice.txt", randomOID(), thisFileStat(t))
 	index.Add("bob.txt", randomOID(), thisFileStat(t))
@@ -78,7 +80,7 @@ func TestReplaceFileWithDir(t *testing.T) {
 }
 
 func TestReplaceDirWithFile(t *testing.T) {
-	index := NewIndex()
+	index := NewIndex("/tmp")
 
 	index.Add("alice.txt", randomOID(), thisFileStat(t))
 	index.Add("nested/bob.txt", randomOID(), thisFileStat(t))
@@ -95,7 +97,7 @@ func TestReplaceDirWithFile(t *testing.T) {
 }
 
 func TestReplaceNestedDirWithFile(t *testing.T) {
-	index := NewIndex()
+	index := NewIndex("/tmp")
 
 	index.Add("alice.txt", randomOID(), thisFileStat(t))
 	index.Add("nested/bob.txt", randomOID(), thisFileStat(t))

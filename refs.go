@@ -33,11 +33,11 @@ func (r ref) UpdateHead(oid []byte) error {
 	return nil
 }
 
-func (r ref) head_path() string {
+func (r ref) HeadPath() string {
 	return r.headPath
 }
 
-func (r ref) Read_head() string {
+func (r ref) ReadHead() string {
 	_, err := os.Stat(r.headPath)
 	if os.IsNotExist(err) {
 		return ""

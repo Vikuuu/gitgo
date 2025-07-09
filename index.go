@@ -28,17 +28,19 @@ const (
 
 type Index struct {
 	entries  map[string]IndexEntry
+	path     string
 	keys     *datastr.SortedSet
 	lockfile *lockFile
 	changed  bool
 	parents  map[string]*datastr.Set
 }
 
-func NewIndex() *Index {
+func NewIndex(gitPath string) *Index {
 	return &Index{
 		entries:  make(map[string]IndexEntry),
 		keys:     datastr.NewSortedSet(),
-		lockfile: lockInitialize(filepath.Join(GITPATH, "index")),
+		path:     filepath.Join(gitPath, "index"),
+		lockfile: lockInitialize(filepath.Join(gitPath, "index")),
 		changed:  false,
 		parents:  make(map[string]*datastr.Set),
 	}
@@ -60,8 +62,8 @@ func (i *Index) Entries() []Entries {
 	return e
 }
 
-func IndexHoldForUpdate() (bool, *Index, error) {
-	index := NewIndex()
+func IndexHoldForUpdate(gitPath string) (bool, *Index, error) {
+	index := NewIndex(gitPath)
 	b, err := index.lockfile.holdForUpdate()
 	if err != nil {
 		return false, index, err
@@ -77,7 +79,7 @@ func IndexHoldForUpdate() (bool, *Index, error) {
 }
 
 func (i *Index) Load() error {
-	fileReader, err := os.Open(filepath.Join(GITPATH, "index"))
+	fileReader, err := os.Open(i.path)
 	if err != nil {
 		return err
 	}
@@ -151,42 +153,19 @@ func (i *Index) readEntries(r io.Reader, count int, h *bytes.Buffer) {
 }
 
 func (i *Index) storeEntryByte(entry []byte) {
-	log.Printf(
-		"storeEntryByte: raw entry len=%d, entry bytes (40–60): % x",
-		len(entry),
-		entry[40:60],
-	)
-
-	log.Printf("raw tail from offset62: % x", entry[62:])
-
 	fNameInEntry := entry[62:]
-	log.Printf("slicing filename: entry[62:%d] ⇒ len=%d", len(entry), len(fNameInEntry))
-
-	log.Printf("storeEntryByte: fNameInEntry bytes: % x len: %d", fNameInEntry, len(fNameInEntry))
-	log.Printf("storeEntryByte: fNameInEntry as string (raw): %q", fNameInEntry)
-
 	oidInEntry := entry[40:60]
+
 	nullIdx := bytes.IndexByte(fNameInEntry, byte(0))
-	log.Printf(
-		"computed nullIdx=%d; (nullIdx+1) mod ENTRYBLOCK = %d",
-		nullIdx,
-		(nullIdx+1)%ENTRYBLOCK,
-	)
-
-	log.Printf("storeEntryByte: nullIdx=%d, fNameInEntry length=%d", nullIdx, len(fNameInEntry))
-
 	// for i, v := range entry {
 	// 	log.Printf("%d element of entry: %s\n", i, string(v))
 	// }
-	log.Printf("Null Index: %d\n", nullIdx)
 	fileName := ""
 	if nullIdx != -1 {
 		fileName = string(fNameInEntry[:nullIdx])
 	} else {
 		fileName = string(fNameInEntry[:])
 	}
-	log.Printf("storeEntryByte: about to Stat() fileName=%q", fileName)
-	log.Printf("final filename string=%q (len %d)", fileName, len(fileName))
 
 	stat, err := os.Stat(fileName)
 	if err != nil {

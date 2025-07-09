@@ -52,16 +52,19 @@ func BuildTree(entries []Entries) *Tree {
 	return root
 }
 
-func TraverseTree(tree *Tree) ([]Entries, error) {
+func TraverseTree(tree *Tree, dbPath string) ([]Entries, error) {
 	entry := []Entries{}
 	for name, node := range tree.Nodes {
 		switch n := node.(type) {
 		case *Tree:
-			e, err := TraverseTree(n)
+			e, err := TraverseTree(n, dbPath)
 			if err != nil {
 				return nil, err
 			}
-			tree := TreeBlob{Data: CreateTreeEntry(e)}.Init()
+			tree := TreeBlob{
+				Data:   CreateTreeEntry(e),
+				DBPath: dbPath,
+			}.Init()
 			hash, err := tree.Store()
 			if err != nil {
 				return nil, err
