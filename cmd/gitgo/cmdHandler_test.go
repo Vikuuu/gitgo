@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/brianvoe/gofakeit/v7"
@@ -372,4 +373,38 @@ func TestIncrementalFileAdd(t *testing.T) {
 		t.Logf("STDOUT: %s", stdoutCon)
 		t.Logf("STDERR: %s", stderrCon)
 	}
+}
+
+func TestStatusCommand(t *testing.T) {
+	cmds, cmd := tearUp(t)
+
+	cmd.name = "status"
+	cmd.args = []string{}
+
+	_, err := os.Create(filepath.Join(cmd.pwd, "file1.txt"))
+	assert.NoErrorf(t, err, "Error creating file in test dir")
+
+	_, err = os.Create(filepath.Join(cmd.pwd, "another.txt"))
+	assert.NoErrorf(t, err, "Error creating file in test dir")
+
+	exitCode, err := cmds.run(cmd)
+
+	cmd.stdout.Seek(0, 0)
+	cmd.stderr.Seek(0, 0)
+	stdoutCon, _ := io.ReadAll(cmd.stdout)
+	stderrCon, _ := io.ReadAll(cmd.stderr)
+
+	assert.NoErrorf(t, err, "Error running `status` command")
+	assert.Equal(t, 0, exitCode)
+
+	if err != nil || exitCode != 0 {
+		if err != nil {
+			t.Logf("ERROR: %v", err)
+		}
+		t.Logf("STDOUT: %s", stdoutCon)
+		t.Logf("STDERR: %s", stderrCon)
+	}
+
+	assert.True(t, strings.Contains(string(stdoutCon), "?? another.txt\n?? file1.txt\n"))
+	t.Log(string(stdoutCon))
 }
