@@ -28,6 +28,7 @@ const (
 
 type Index struct {
 	entries  map[string]IndexEntry
+	repoPath string
 	path     string
 	keys     *datastr.SortedSet
 	lockfile *lockFile
@@ -35,10 +36,11 @@ type Index struct {
 	parents  map[string]*datastr.Set
 }
 
-func NewIndex(gitPath string) *Index {
+func NewIndex(repoPath, gitPath string) *Index {
 	return &Index{
 		entries:  make(map[string]IndexEntry),
 		keys:     datastr.NewSortedSet(),
+		repoPath: repoPath,
 		path:     filepath.Join(gitPath, "index"),
 		lockfile: lockInitialize(filepath.Join(gitPath, "index")),
 		changed:  false,
@@ -62,8 +64,8 @@ func (i *Index) Entries() []Entries {
 	return e
 }
 
-func IndexHoldForUpdate(gitPath string) (bool, *Index, error) {
-	index := NewIndex(gitPath)
+func IndexHoldForUpdate(repoPath, gitPath string) (bool, *Index, error) {
+	index := NewIndex(repoPath, gitPath)
 	b, err := index.lockfile.holdForUpdate()
 	if err != nil {
 		return false, index, err
@@ -167,7 +169,7 @@ func (i *Index) storeEntryByte(entry []byte) {
 		fileName = string(fNameInEntry[:])
 	}
 
-	stat, err := os.Stat(fileName)
+	stat, err := os.Stat(filepath.Join(i.repoPath, fileName))
 	if err != nil {
 		log.Fatalln(err)
 	}

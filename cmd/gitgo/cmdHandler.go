@@ -42,7 +42,7 @@ func cmdCommitHandler(cmd command) int {
 	// creates and merkel tree, and store all the sub-trees on the way
 	// The blob files are already being stored during the
 	// `add` command
-	index := gitgo.NewIndex(cmd.repo.GitPath)
+	index := gitgo.NewIndex(cmd.repo.Path, cmd.repo.GitPath)
 	index.Load()
 	entries := index.Entries()
 	tree := gitgo.BuildTree(entries)
@@ -132,7 +132,7 @@ func cmdCatFileHandler(cmd command) int {
 func cmdAddHandler(cmd command) int {
 	// gitgo.InitGlobals()
 	// index := gitgo.NewIndex()
-	_, index, err := gitgo.IndexHoldForUpdate(cmd.repo.GitPath)
+	_, index, err := gitgo.IndexHoldForUpdate(cmd.repo.Path, cmd.repo.GitPath)
 	if err != nil {
 		fmt.Fprintf(cmd.stderr, `
 Fatal: %v
@@ -147,11 +147,7 @@ repository earlier: remove the file manually to continue.`, err)
 
 	// add all the paths to a slice first
 	for _, path := range cmd.args {
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			fmt.Fprintf(cmd.stderr, "error: %v\n", err)
-			return 1
-		}
+		absPath := filepath.Join(cmd.pwd, path)
 		expandPaths, err := gitgo.ListFiles(absPath, cmd.repo.Path)
 		if err != nil {
 			index.Release()
@@ -162,12 +158,7 @@ repository earlier: remove the file manually to continue.`, err)
 	}
 
 	for _, p := range filePaths {
-		ap, err := filepath.Abs(p)
-		if err != nil {
-			fmt.Fprintf(cmd.stderr, "error: %v\n", err)
-			return 1
-		}
-
+		ap := filepath.Join(cmd.pwd, p)
 		data, err := os.ReadFile(ap)
 		if err != nil {
 			if os.IsPermission(err) {

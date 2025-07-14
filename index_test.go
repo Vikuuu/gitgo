@@ -38,7 +38,7 @@ func TestAddSingleFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	rootPath := tmpDir
 	gitPath := filepath.Join(rootPath, ".gitgo")
-	idx := NewIndex(gitPath)
+	idx := NewIndex(rootPath, gitPath)
 
 	oid := randomOID()
 	// if err := idx.Add("alice.txt", oid, fi); err != nil {
@@ -62,7 +62,7 @@ func TestAddSingleFile(t *testing.T) {
 }
 
 func TestReplaceFileWithDir(t *testing.T) {
-	index := NewIndex("/tmp")
+	index := NewIndex("/tmp", "/tmp/.gitgo")
 
 	index.Add("alice.txt", randomOID(), thisFileStat(t))
 	index.Add("bob.txt", randomOID(), thisFileStat(t))
@@ -80,7 +80,7 @@ func TestReplaceFileWithDir(t *testing.T) {
 }
 
 func TestReplaceDirWithFile(t *testing.T) {
-	index := NewIndex("/tmp")
+	index := NewIndex("/tmp", "/tmp/.gitgo")
 
 	index.Add("alice.txt", randomOID(), thisFileStat(t))
 	index.Add("nested/bob.txt", randomOID(), thisFileStat(t))
@@ -97,7 +97,7 @@ func TestReplaceDirWithFile(t *testing.T) {
 }
 
 func TestReplaceNestedDirWithFile(t *testing.T) {
-	index := NewIndex("/tmp")
+	index := NewIndex("/tmp", "/tmp/.gitgo")
 
 	index.Add("alice.txt", randomOID(), thisFileStat(t))
 	index.Add("nested/bob.txt", randomOID(), thisFileStat(t))

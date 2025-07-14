@@ -36,6 +36,9 @@ func main() {
 	exitCode, err := cmds.run(cmd)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v", err)
+		os.Exit(1)
+	}
+	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
 }
