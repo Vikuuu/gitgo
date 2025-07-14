@@ -117,16 +117,6 @@ func read(f io.Reader, size int) ([]byte, error) {
 		return nil, err
 	}
 
-	// TODO: Remove the comments
-	// I do not need to do this because I am writing
-	// it in the function that called this function
-	// _, err = h.Write(data)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if n != hn {
-	// 	return nil, errors.New("read and write not equal")
-	// }
 	return data, nil
 }
 
@@ -159,9 +149,6 @@ func (i *Index) storeEntryByte(entry []byte) {
 	oidInEntry := entry[40:60]
 
 	nullIdx := bytes.IndexByte(fNameInEntry, byte(0))
-	// for i, v := range entry {
-	// 	log.Printf("%d element of entry: %s\n", i, string(v))
-	// }
 	fileName := ""
 	if nullIdx != -1 {
 		fileName = string(fNameInEntry[:nullIdx])
@@ -184,9 +171,7 @@ func verifyChecksum(f io.Reader, h *bytes.Buffer) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	// if n != 20 {
-	// 	log.Fatalln("n not equals to 20 in verifychecksum: n = ", n)
-	// }
+
 	currChecksum := sha1.Sum(h.Bytes())
 	currC := bytes.NewBuffer(currChecksum[:])
 	if bytes.Equal(c.Bytes(), currC.Bytes()) {
@@ -281,18 +266,11 @@ func (i *Index) storeEntry(e *IndexEntry) {
 }
 
 func (i *Index) WriteUpdate() (bool, error) {
-	// b, err := i.lockfile.holdForUpdate()
-	// if err != nil {
-	// 	return false, err
-	// }
-	// if !b {
-	// 	return false, nil
-	// }
 	if !i.changed {
 		return false, i.lockfile.rollback()
 	}
 
-	buf := new(bytes.Buffer) // makes a new buffer and returns its pointer
+	buf := new(bytes.Buffer) // Makes a new buffer and returns its pointer
 	writeHeader(buf, len(i.entries))
 	it := i.keys.Iterator()
 	for it.Next() {
@@ -305,7 +283,7 @@ func (i *Index) WriteUpdate() (bool, error) {
 		buf.Write(data)
 	}
 
-	// getting the hash of the whole content in the
+	// Getting the hash of the whole content in the
 	// index file
 	content := buf.Bytes()
 	bufHash := sha1.Sum(content)

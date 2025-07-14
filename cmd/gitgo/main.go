@@ -53,6 +53,7 @@ func (c *commands) initializeCommands() {
 	c.register("init", cmdInitHandler, "init", "Initialize gitgo repository in the directory.")
 	c.register("add", cmdAddHandler, "add", "Add files to staging area.")
 	c.register("cat-file", cmdCatFileHandler, "cat-file", "Get the blob content.")
+	c.register("status", cmdStatusHandler, "status", "Display the status of the repo.")
 }
 
 func GetGitgoVar() map[string]string {

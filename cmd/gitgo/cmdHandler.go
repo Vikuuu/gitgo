@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/Vikuuu/gitgo"
@@ -145,7 +146,7 @@ repository earlier: remove the file manually to continue.`, err)
 	}
 	var filePaths []string
 
-	// add all the paths to a slice first
+	// Add all the paths to a slice first
 	for _, path := range cmd.args {
 		absPath := filepath.Join(cmd.pwd, path)
 		expandPaths, err := gitgo.ListFiles(absPath, cmd.repo.Path)
@@ -197,5 +198,22 @@ repository earlier: remove the file manually to continue.`, err)
 		fmt.Fprintln(cmd.stdout, "Written data to Index file")
 	}
 
+	return 0
+}
+
+func cmdStatusHandler(cmd command) int {
+	paths, err := gitgo.ListFiles(cmd.repo.Path, cmd.repo.Path)
+	if err != nil {
+		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+		return 1
+	}
+
+	slices.Sort(paths)
+	out := ""
+	for _, p := range paths {
+		out += fmt.Sprintf("?? %s\n", p)
+	}
+
+	fmt.Fprintf(cmd.stdout, "%s\n", out)
 	return 0
 }
