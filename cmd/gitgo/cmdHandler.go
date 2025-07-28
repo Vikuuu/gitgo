@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/Vikuuu/gitgo"
+	"github.com/Vikuuu/gitgo/internal/datastr"
 )
 
 var gitgoFolders []string
@@ -92,16 +92,16 @@ func cmdCommitHandler(cmd command) int {
 	refs.UpdateHead([]byte(cHash))
 	fmt.Fprintf(cmd.stdout, "%s %s %s\n", is_root, cHash, gitgo.FirstLine(message))
 
-	// clear the file after the commit is done
-	err = os.Remove(cmd.repo.Index)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0
-		}
+	// Clear the file after the commit is done
+	// err = os.Remove(cmd.repo.Index)
+	// if err != nil {
+	// 	if os.IsNotExist(err) {
+	// 		return 0
+	// 	}
 
-		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
-		return 1
-	}
+	// 	fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+	// 	return 1
+	// }
 
 	return 0
 }
@@ -202,16 +202,24 @@ repository earlier: remove the file manually to continue.`, err)
 }
 
 func cmdStatusHandler(cmd command) int {
-	paths, err := gitgo.ListFiles(cmd.repo.Path, cmd.repo.Path)
-	if err != nil {
-		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
-		return 1
-	}
+	// paths, err := gitgo.ListFiles(cmd.repo.Path, cmd.repo.Path)
+	// if err != nil {
+	// 	fmt.Fprintf(cmd.stderr, "error: %v\n", err)
+	// 	return 1
+	// }
 
-	slices.Sort(paths)
+	index := gitgo.NewIndex(cmd.repo.Path, cmd.repo.GitPath)
+	index.Load()
+	// trackedFiles := index.ListFiles()
+
+	untracked := datastr.NewSortedSet()
+
+	scanWorkspace(cmd, *untracked, "", index)
+
 	out := ""
-	for _, p := range paths {
-		out += fmt.Sprintf("?? %s\n", p)
+	it := untracked.Iterator()
+	for it.Next() {
+		out += fmt.Sprintf("?? %s\n", it.Key())
 	}
 
 	fmt.Fprintf(cmd.stdout, "%s\n", out)

@@ -384,3 +384,10 @@ func writeIndexEntry(entry IndexEntry) ([]byte, error) {
 }
 
 func (i *Index) Release() error { return i.lockfile.rollback() }
+
+func (i *Index) IsTracked(path string) bool {
+	cleanPath := filepath.Clean(path)
+	_, pres := i.entries[cleanPath]
+	_, pPres := i.parents[cleanPath]
+	return pres || pPres
+}

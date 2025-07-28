@@ -32,26 +32,26 @@ func cmdInit() *commands {
 	return cmds
 }
 
+func tempFile(name string) *os.File {
+	f, err := os.CreateTemp("/tmp", name)
+	if err != nil {
+		panic(err)
+	}
+	return f
+}
+
 func testDataInit() testdata {
-	// make dir in /tmp
+	// make directory in `/tmp`
 	tmpDir, err := os.MkdirTemp("/tmp", "gitgo-test")
 	if err != nil {
 		panic(err)
 	}
 
-	// create temp stdin, stdout and stderr file
-	stdin, err := os.CreateTemp("/tmp", "stdin")
-	if err != nil {
-		panic(err)
-	}
-	stdout, err := os.CreateTemp("/tmp", "stdout")
-	if err != nil {
-		panic(err)
-	}
-	stderr, err := os.CreateTemp("/tmp", "stderr")
-	if err != nil {
-		panic(err)
-	}
+	// Create standard input, output, and error
+	// temporary files
+	stdin := tempFile("stdin")
+	stdout := tempFile("stdout")
+	stderr := tempFile("stderr")
 
 	return testdata{
 		dir:    tmpDir,
@@ -61,13 +61,21 @@ func testDataInit() testdata {
 	}
 }
 
+func testGitgoVar() map[string]string {
+	env := make(map[string]string)
+	env["name"] = "Test User"
+	env["email"] = "test@example.com"
+
+	return env
+}
+
 func testRepoInitialize(t *testing.T, td testdata) command {
 	cmds := cmdInit()
 
 	cmd := command{
 		name:   "init",
 		args:   []string{},
-		env:    GetGitgoVar(),
+		env:    testGitgoVar(),
 		pwd:    td.dir,
 		stdin:  td.stdin,
 		stdout: td.stdout,
@@ -149,12 +157,12 @@ func TestRepoInitialization(t *testing.T) {
 func TestSingleFileAdd(t *testing.T) {
 	cmds, cmd := tearUp(t)
 
-	// if initialization of test repo is successful,
+	// If initialization of test repo is successful,
 	// update the command name and related variables
 	cmd.name = "add"
 	cmd.args = []string{"file1.txt"}
 
-	// create the `file1.txt` in the test repo
+	// Create the `file1.txt` in the test repo
 	f, err := os.Create(filepath.Join(cmd.pwd, "file1.txt"))
 	assert.NoError(t, err, "Error creating file in temp dir")
 	assert.NotNilf(t, f, "Got nil, expected `*os.File`")
@@ -167,7 +175,7 @@ func TestSingleFileAdd(t *testing.T) {
 	// Run the `add` command
 	exitCode, err := cmds.run(cmd)
 
-	// Read stdout and stderr content
+	// Read standard output and standard error content
 	cmd.stdout.Seek(0, 0)
 	stdoutContent, _ := io.ReadAll(cmd.stdout)
 	cmd.stderr.Seek(0, 0)
@@ -224,7 +232,7 @@ func TestMultipleFileAdd(t *testing.T) {
 	// Run the `add` command
 	exitCode, err := cmds.run(cmd)
 
-	// Read stdout and stderr content
+	// Read standard output and standard error content
 	cmd.stdout.Seek(0, 0)
 	cmd.stderr.Seek(0, 0)
 	stdoutCon, _ := io.ReadAll(cmd.stdout)
@@ -260,8 +268,8 @@ func TestExecutableFileAdd(t *testing.T) {
 	_, err = f.WriteString(sen)
 	assert.NoError(t, err)
 
-	// make the file into executable file, by the creator
-	// (of course ?)
+	// Make the file into executable file, by the creator
+	// (of course?)
 	err = os.Chmod(f.Name(), 0755)
 	assert.NoErrorf(t, err, "Error changing mod of test file")
 
@@ -332,7 +340,7 @@ func TestIncrementalFileAdd(t *testing.T) {
 	cmd.args = []string{"file2.txt"}
 	exitCode, err = cmds.run(cmd)
 
-	// Read stdout and stderr content
+	// Read standard output and standard error content
 	cmd.stdout.Seek(0, 0)
 	cmd.stderr.Seek(0, 0)
 	stdoutCon, _ = io.ReadAll(cmd.stdout)
@@ -359,7 +367,7 @@ func TestIncrementalFileAdd(t *testing.T) {
 	cmd.args = []string{"file2.txt"}
 	exitCode, err = cmds.run(cmd)
 
-	// Read stdout and stderr content
+	// Read standard output and standard error content
 	cmd.stdout.Seek(0, 0)
 	cmd.stderr.Seek(0, 0)
 	stdoutCon, _ = io.ReadAll(cmd.stdout)
@@ -376,6 +384,27 @@ func TestIncrementalFileAdd(t *testing.T) {
 }
 
 func TestStatusCommand(t *testing.T) {
+	t.Run("Basic Status command test", func(t *testing.T) {
+		statusCommand(t)
+	})
+	t.Run("list files not tracked", func(t *testing.T) {
+		testListFileAsUntrackedNotInIndex(t)
+	})
+	t.Run("lists untracked directories, not their contents", func(t *testing.T) {
+		testUntrackedDir(t)
+	})
+	t.Run("list untracked files inside tracked directories", func(t *testing.T) {
+		testUntrackedFileInTrackedDir(t)
+	})
+	t.Run("does not list empty untracked directories", func(t *testing.T) {
+		testEmptyUntrackedDirectories(t)
+	})
+	t.Run("lists untracked directories that indirectly constain files", func(t *testing.T) {
+		testIndirectlyUntrackedDirectories(t)
+	})
+}
+
+func statusCommand(t *testing.T) {
 	cmds, cmd := tearUp(t)
 
 	cmd.name = "status"
@@ -406,5 +435,295 @@ func TestStatusCommand(t *testing.T) {
 	}
 
 	assert.True(t, strings.Contains(string(stdoutCon), "?? another.txt\n?? file1.txt\n"))
-	t.Log(string(stdoutCon))
+	// t.Log(string(stdoutCon))
+}
+
+func testListFileAsUntrackedNotInIndex(t *testing.T) {
+	cmds, cmd := tearUp(t)
+
+	_, err := os.Create(filepath.Join(cmd.pwd, "committed.txt"))
+	assert.NoErrorf(t, err, "Error creating file in test dir")
+
+	cmd.name = "add"
+	cmd.args = []string{"."}
+
+	exitCode, err := cmds.run(cmd)
+
+	cmd.stdout.Seek(0, 0)
+	cmd.stderr.Seek(0, 0)
+	stdoutCon, _ := io.ReadAll(cmd.stdout)
+	stderrCon, _ := io.ReadAll(cmd.stderr)
+
+	assert.NoErrorf(t, err, "Error running `add` command")
+	assert.Equal(t, 0, exitCode)
+
+	if err != nil || exitCode != 0 {
+		if err != nil {
+			t.Logf("ERROR: %v", err)
+		}
+		t.Logf("STDOUT: %s", stdoutCon)
+		t.Logf("STDERR: %s", stderrCon)
+	}
+
+	cmd.name = "commit"
+	cmd.args = []string{}
+	cmd.stdin.WriteString("commit message")
+
+	exitCode, err = cmds.run(cmd)
+
+	cmd.stdout.Seek(0, 0)
+	cmd.stderr.Seek(0, 0)
+	stdoutCon, _ = io.ReadAll(cmd.stdout)
+	stderrCon, _ = io.ReadAll(cmd.stderr)
+
+	assert.NoErrorf(t, err, "Error running `commit` command")
+	assert.Equal(t, 0, exitCode)
+
+	if err != nil || exitCode != 0 {
+		if err != nil {
+			t.Logf("ERROR: %v", err)
+		}
+		t.Logf("STDOUT: %s", stdoutCon)
+		t.Logf("STDERR: %s", stderrCon)
+	}
+
+	_, err = os.Create(filepath.Join(cmd.pwd, "file.txt"))
+	assert.NoErrorf(t, err, "Error creating file in test dir")
+
+	cmd.name = "status"
+
+	exitCode, err = cmds.run(cmd)
+
+	cmd.stdout.Seek(0, 0)
+	cmd.stderr.Seek(0, 0)
+	stdoutCon, _ = io.ReadAll(cmd.stdout)
+	stderrCon, _ = io.ReadAll(cmd.stderr)
+
+	assert.NoErrorf(t, err, "Error running `status` command")
+	assert.Equal(t, 0, exitCode)
+
+	if err != nil || exitCode != 0 {
+		if err != nil {
+			t.Logf("ERROR: %v", err)
+		}
+		t.Logf("STDOUT: %s", stdoutCon)
+		t.Logf("STDERR: %s", stderrCon)
+	}
+
+	assert.Truef(
+		t,
+		strings.Contains(string(stdoutCon), "?? file.txt"),
+		"Expected file not present in the output",
+	)
+	assert.Falsef(
+		t,
+		strings.Contains(string(stdoutCon), "?? committed.txt"),
+		"This file should not be in the output",
+	)
+	// t.Log(string(stdoutCon))
+
+	tearDown(t, cmd)
+}
+
+func testUntrackedDir(t *testing.T) {
+	cmds, cmd := tearUp(t)
+
+	_, err := os.Create(filepath.Join(cmd.pwd, "file.txt"))
+	assert.NoErrorf(t, err, "Error creating file in test dir")
+	err = os.Mkdir(filepath.Join(cmd.pwd, "dir"), 0755)
+	assert.NoErrorf(t, err, "Error creating file and dir at the same time in test dir")
+	_, err = os.Create(filepath.Join(cmd.pwd, "dir", "another.txt"))
+	assert.NoError(t, err)
+
+	cmd.name = "status"
+	cmd.args = []string{}
+
+	exitCode, err := cmds.run(cmd)
+
+	cmd.stdout.Seek(0, 0)
+	cmd.stderr.Seek(0, 0)
+	stdoutCon, _ := io.ReadAll(cmd.stdout)
+	stderrCon, _ := io.ReadAll(cmd.stderr)
+
+	assert.NoErrorf(t, err, "Error running `status` command")
+	assert.Equalf(t, 0, exitCode, "Not expected exit code")
+
+	if err != nil || exitCode != 0 {
+		if err != nil {
+			t.Logf("ERROR: %v", err)
+		}
+		t.Logf("STDOUT: %s", stdoutCon)
+		t.Logf("STDERR: %s", stderrCon)
+	}
+
+	assert.Truef(
+		t,
+		strings.Contains(string(stdoutCon), "?? dir/\n?? file.txt"),
+		"Expected dir & file not present in the output",
+	)
+
+	tearDown(t, cmd)
+}
+
+func testUntrackedFileInTrackedDir(t *testing.T) {
+	cmds, cmd := tearUp(t)
+
+	err := os.MkdirAll(filepath.Join(cmd.pwd, "a", "b"), 0755)
+	assert.NoError(t, err)
+
+	_, err = os.Create(filepath.Join(cmd.pwd, "a", "b", "inner.txt"))
+	assert.NoError(t, err)
+
+	cmd.name = "add"
+	cmd.args = []string{"."}
+
+	exitCode, err := cmds.run(cmd)
+
+	cmd.stdout.Seek(0, 0)
+	cmd.stderr.Seek(0, 0)
+	stdoutCon, _ := io.ReadAll(cmd.stdout)
+	stderrCon, _ := io.ReadAll(cmd.stderr)
+
+	assert.NoErrorf(t, err, "Error running `status` command")
+	assert.Equalf(t, 0, exitCode, "Not expected exit code")
+
+	if err != nil || exitCode != 0 {
+		if err != nil {
+			t.Logf("ERROR: %v", err)
+		}
+		t.Logf("STDOUT: %s", stdoutCon)
+		t.Logf("STDERR: %s", stderrCon)
+	}
+
+	cmd.name = "commit"
+	cmd.args = []string{}
+	cmd.stdin.WriteString("commit message")
+
+	exitCode, err = cmds.run(cmd)
+
+	cmd.stdout.Seek(0, 0)
+	cmd.stderr.Seek(0, 0)
+	stdoutCon, _ = io.ReadAll(cmd.stdout)
+	stderrCon, _ = io.ReadAll(cmd.stderr)
+
+	assert.NoErrorf(t, err, "Error running `commit` command")
+	assert.Equalf(t, 0, exitCode, "Not expected exit code")
+
+	if err != nil || exitCode != 0 {
+		if err != nil {
+			t.Logf("ERROR: %v", err)
+		}
+		t.Logf("STDOUT: %s", stdoutCon)
+		t.Logf("STDERR: %s", stderrCon)
+	}
+
+	_, err = os.Create(filepath.Join(cmd.pwd, "a", "outer.txt"))
+	assert.NoError(t, err)
+
+	err = os.MkdirAll(filepath.Join(cmd.pwd, "a", "b", "c"), 0755)
+	assert.NoError(t, err)
+
+	_, err = os.Create(filepath.Join(cmd.pwd, "a", "b", "c", "file.txt"))
+	assert.NoError(t, err)
+
+	cmd.name = "status"
+
+	exitCode, err = cmds.run(cmd)
+
+	cmd.stdout.Seek(0, 0)
+	cmd.stderr.Seek(0, 0)
+	stdoutCon, _ = io.ReadAll(cmd.stdout)
+	stderrCon, _ = io.ReadAll(cmd.stderr)
+
+	assert.NoErrorf(t, err, "Error running `status` command")
+	assert.Equalf(t, 0, exitCode, "Not expected exit code")
+
+	if err != nil || exitCode != 0 {
+		if err != nil {
+			t.Logf("ERROR: %v", err)
+		}
+		t.Logf("STDOUT: %s", stdoutCon)
+		t.Logf("STDERR: %s", stderrCon)
+	}
+
+	assert.True(t, strings.Contains(
+		string(stdoutCon),
+		"?? a/b/c/\n?? a/outer.txt",
+	))
+
+	tearDown(t, cmd)
+}
+
+func testEmptyUntrackedDirectories(t *testing.T) {
+	cmds, cmd := tearUp(t)
+
+	err := os.Mkdir(filepath.Join(cmd.pwd, "outer"), 0755)
+	assert.NoError(t, err)
+
+	cmd.name = "status"
+	cmd.args = []string{}
+	cmd.stdout = tempFile("stdin")
+
+	exitCode, err := cmds.run(cmd)
+
+	cmd.stdout.Seek(0, 0)
+	cmd.stderr.Seek(0, 0)
+	stdoutCon, _ := io.ReadAll(cmd.stdout)
+	stderrCon, _ := io.ReadAll(cmd.stderr)
+
+	assert.NoErrorf(t, err, "Error running `status` command")
+	assert.Equalf(t, 0, exitCode, "Not expected exit code")
+
+	if err != nil || exitCode != 0 {
+		if err != nil {
+			t.Logf("ERROR: %v", err)
+		}
+		t.Logf("STDOUT: %s", stdoutCon)
+		t.Logf("STDERR: %s", stderrCon)
+	}
+
+	assert.False(t, strings.Contains(
+		string(stdoutCon),
+		"?? outer/",
+	))
+
+	tearDown(t, cmd)
+}
+
+func testIndirectlyUntrackedDirectories(t *testing.T) {
+	cmds, cmd := tearUp(t)
+
+	err := os.MkdirAll(filepath.Join(cmd.pwd, "outer", "inner"), 0755)
+	assert.NoError(t, err)
+
+	_, err = os.Create(filepath.Join(cmd.pwd, "outer", "inner", "file.txt"))
+	assert.NoError(t, err)
+
+	cmd.name = "status"
+	cmd.args = []string{}
+
+	exitCode, err := cmds.run(cmd)
+
+	cmd.stdout.Seek(0, 0)
+	cmd.stderr.Seek(0, 0)
+	stdoutCon, _ := io.ReadAll(cmd.stdout)
+	stderrCon, _ := io.ReadAll(cmd.stderr)
+
+	assert.NoErrorf(t, err, "Error running `status` command")
+	assert.Equalf(t, 0, exitCode, "Not expected exit code")
+
+	if err != nil || exitCode != 0 {
+		if err != nil {
+			t.Logf("ERROR: %v", err)
+		}
+		t.Logf("STDOUT: %s", stdoutCon)
+		t.Logf("STDERR: %s", stderrCon)
+	}
+
+	assert.True(t, strings.Contains(
+		string(stdoutCon),
+		"?? outer/",
+	))
+
+	tearDown(t, cmd)
 }
