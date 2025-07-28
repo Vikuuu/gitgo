@@ -19,7 +19,7 @@ func ListFiles(dir string, rootPath string) ([]string, error) {
 			return fmt.Errorf("from WalkDir %s", err)
 		}
 
-		// check if the given dir string is file or dir ?
+		// Check if the given dir string is file or dir?
 		s, err := os.Stat(path)
 		// if file is not present
 		if os.IsNotExist(err) {
@@ -41,8 +41,8 @@ func ListFiles(dir string, rootPath string) ([]string, error) {
 		}
 
 		name := filepath.Base(path)
-		// skip the files or directories found in the ignore hashmap
-		if _, found := g_ignore[name]; found {
+		// Skip the files or directories found in the ignore hashmap
+		if _, found := G_ignore[name]; found {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
