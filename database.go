@@ -14,7 +14,7 @@ import (
 
 var GITGO_IGNORE = []string{".", "..", ".gitgo"}
 
-var g_ignore = map[string]bool{
+var G_ignore = map[string]bool{
 	".":      true,
 	"..":     true,
 	".gitgo": true,
