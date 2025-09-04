@@ -145,23 +145,61 @@ func (i *Index) readEntries(r io.Reader, count int, h *bytes.Buffer) {
 }
 
 func (i *Index) storeEntryByte(entry []byte) {
-	fNameInEntry := entry[62:]
+	const headerLen = 62
+	if len(entry) < headerLen {
+		return
+	}
+
+	ctime := entry[0:4]
+	ctimeN := entry[4:8]
+	mtime := entry[8:12]
+	mtimeN := entry[12:16]
+	dev := entry[16:20]
+	ino := entry[20:24]
+	mode := entry[24:28]
+	uid := entry[28:32]
+	gid := entry[32:36]
+	size := entry[36:40]
 	oidInEntry := entry[40:60]
+	flag := entry[60:62]
+	fNameInEntry := entry[62:]
 
-	nullIdx := bytes.IndexByte(fNameInEntry, byte(0))
-	fileName := ""
-	if nullIdx != -1 {
-		fileName = string(fNameInEntry[:nullIdx])
-	} else {
-		fileName = string(fNameInEntry[:])
+	if idx := bytes.IndexByte(fNameInEntry, 0); idx != -1 {
+		fNameInEntry = fNameInEntry[:idx]
 	}
 
-	stat, err := os.Stat(filepath.Join(i.repoPath, fileName))
-	if err != nil {
-		log.Fatalln(err)
+	mtimeVal := int64(binary.BigEndian.Uint32(mtime))
+	mtimeNVal := int64(binary.BigEndian.Uint32(mtimeN))
+	ctimeVal := int64(binary.BigEndian.Uint32(ctime))
+	ctimeNVal := int64(binary.BigEndian.Uint32(ctimeN))
+
+	devVal := uint64(binary.BigEndian.Uint32(dev))
+	inoVal := uint64(binary.BigEndian.Uint32(ino))
+	modeVal := int(binary.BigEndian.Uint32(mode))
+	uidVal := uint32(binary.BigEndian.Uint32(uid))
+	gidVal := uint32(binary.BigEndian.Uint32(gid))
+	sizeVal := int64(binary.BigEndian.Uint32(size))
+	flagVal := uint32(binary.BigEndian.Uint16(flag))
+
+	if len(oidInEntry) != 20 {
+		panic("storeEntryByte: oid len != 20 bytes")
 	}
 
-	i.Add(fileName, hex.EncodeToString(oidInEntry), stat)
+	i.add(&IndexEntry{
+		Path:      string(fNameInEntry),
+		Oid:       hex.EncodeToString(oidInEntry),
+		Mtime:     mtimeVal,
+		MtimeNsec: mtimeNVal,
+		Ctime:     ctimeVal,
+		CtimeNsec: ctimeNVal,
+		Dev:       devVal,
+		Ino:       inoVal,
+		Mode:      modeVal,
+		Uid:       uidVal,
+		Gid:       gidVal,
+		Size:      sizeVal,
+		Flags:     flagVal,
+	})
 }
 
 func verifyChecksum(f io.Reader, h *bytes.Buffer) {
@@ -179,6 +217,13 @@ func verifyChecksum(f io.Reader, h *bytes.Buffer) {
 	}
 }
 
+func (i *Index) add(entry *IndexEntry) {
+	i.discardConflict(entry)
+	i.storeEntry(entry)
+	i.changed = true
+}
+
+// This function is being used in the tests.
 func (i *Index) Add(path, oid string, stat os.FileInfo) {
 	entry := NewIndexEntry(path, oid, stat)
 	i.discardConflict(entry)
@@ -316,69 +361,83 @@ func writeHeader(buf *bytes.Buffer, entryLen int) error {
 func writeIndexEntry(entry IndexEntry) ([]byte, error) {
 	b := new(bytes.Buffer)
 
-	err := binary.Write(b, binary.BigEndian, uint32(entry.Ctime))
-	if err != nil {
-		return nil, fmt.Errorf("writing ctime: %s", err)
+	writeU32 := func(v uint32, what string) error {
+		if err := binary.Write(b, binary.BigEndian, v); err != nil {
+			return fmt.Errorf("writing %s: %w", what, err)
+		}
+		return nil
 	}
-	err = binary.Write(b, binary.BigEndian, uint32(entry.CtimeNsec))
-	if err != nil {
-		return nil, fmt.Errorf("writing ctime nsec: %s", err)
+	writeU16 := func(v uint16, what string) error {
+		if err := binary.Write(b, binary.BigEndian, v); err != nil {
+			return fmt.Errorf("writing %s: %w", what, err)
+		}
+		return nil
 	}
-	err = binary.Write(b, binary.BigEndian, uint32(entry.Mtime))
-	if err != nil {
-		return nil, fmt.Errorf("writing mtime: %s", err)
+
+	if err := writeU32(uint32(entry.Ctime), "ctime"); err != nil {
+		return nil, err
 	}
-	err = binary.Write(b, binary.BigEndian, uint32(entry.MtimeNsec))
-	if err != nil {
-		return nil, fmt.Errorf("writing mtime nsec: %s", err)
+	if err := writeU32(uint32(entry.CtimeNsec), "ctime nsec"); err != nil {
+		return nil, err
 	}
-	err = binary.Write(b, binary.BigEndian, uint32(entry.Dev))
-	if err != nil {
-		return nil, fmt.Errorf("writing dev: %s", err)
+	if err := writeU32(uint32(entry.Mtime), "mtime"); err != nil {
+		return nil, err
 	}
-	err = binary.Write(b, binary.BigEndian, uint32(entry.Ino))
-	if err != nil {
-		return nil, fmt.Errorf("writing ino: %s", err)
+	if err := writeU32(uint32(entry.MtimeNsec), "mtime nsec"); err != nil {
+		return nil, err
 	}
-	err = binary.Write(b, binary.BigEndian, uint32(entry.Mode))
-	if err != nil {
-		return nil, fmt.Errorf("writing mode: %s", err)
+	if err := writeU32(uint32(entry.Dev), "dev"); err != nil {
+		return nil, err
 	}
-	err = binary.Write(b, binary.BigEndian, uint32(entry.Uid))
-	if err != nil {
-		return nil, fmt.Errorf("writing uid: %s", err)
+	if err := writeU32(uint32(entry.Ino), "ino"); err != nil {
+		return nil, err
 	}
-	err = binary.Write(b, binary.BigEndian, uint32(entry.Gid))
-	if err != nil {
-		return nil, fmt.Errorf("writing gid: %s", err)
+	if err := writeU32(uint32(entry.Mode), "mode"); err != nil {
+		return nil, err
 	}
-	err = binary.Write(b, binary.BigEndian, uint32(entry.Size))
-	if err != nil {
-		return nil, fmt.Errorf("writing size: %s", err)
+	if err := writeU32(uint32(entry.Uid), "uid"); err != nil {
+		return nil, err
 	}
+	if err := writeU32(uint32(entry.Gid), "gid"); err != nil {
+		return nil, err
+	}
+	if err := writeU32(uint32(entry.Size), "size"); err != nil {
+		return nil, err
+	}
+
 	oid, err := hex.DecodeString(entry.Oid)
 	if err != nil {
 		return nil, fmt.Errorf("decoding string oid: %s", err)
 	}
-	err = binary.Write(b, binary.BigEndian, oid)
-	if err != nil {
-		return nil, fmt.Errorf("writing oid: %s", err)
+	if len(oid) != 20 {
+		return nil, fmt.Errorf("oid must be 20 bytes got %d", len(oid))
 	}
-	err = binary.Write(b, binary.BigEndian, uint16(entry.Flags))
-	if err != nil {
-		return nil, fmt.Errorf("writing flag: %s", err)
+
+	if _, err := b.Write(oid); err != nil {
+		return nil, fmt.Errorf("writing oid: %w", err)
 	}
-	_, err = b.Write([]byte(entry.Path))
-	if err != nil {
+
+	nameLen := len(entry.Path)
+	if nameLen > 0xFFF {
+		nameLen = 0xFFF
+	}
+	flagVal := (uint16(entry.Flags) & 0xF000) | uint16(nameLen&0x0FFF)
+	if err := writeU16(flagVal, "flag"); err != nil {
+		return nil, err
+	}
+
+	if _, err := b.Write([]byte(entry.Path)); err != nil {
 		return nil, fmt.Errorf("writing entry path: %s", err)
 	}
-	err = b.WriteByte(0)
-	if err != nil {
+	if err = b.WriteByte(0); err != nil {
 		return nil, fmt.Errorf("writing null byte after entry: %s", err)
 	}
+
 	missing := (8 - (b.Len() % 8)) % 8
 	for range missing {
-		b.WriteByte(0)
+		if err := b.WriteByte(0); err != nil {
+			return nil, fmt.Errorf("writing padding: %w", err)
+		}
 	}
 	return b.Bytes(), nil
 }
@@ -390,4 +449,8 @@ func (i *Index) IsTracked(path string) bool {
 	_, pres := i.entries[cleanPath]
 	_, pPres := i.parents[cleanPath]
 	return pres || pPres
+}
+
+func (i *Index) IndexEntries() map[string]IndexEntry {
+	return i.entries
 }

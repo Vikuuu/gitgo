@@ -13,17 +13,20 @@ func scanWorkspace(
 	untracked datastr.SortedSet,
 	prefix string,
 	index *gitgo.Index,
+	stats map[string]os.FileInfo,
 ) error {
-	stats, err := listDir(cmd.repo.Path, prefix)
+	fileStats, err := listDir(cmd.repo.Path, prefix)
 	if err != nil {
 		return err
 	}
-	for rel, stat := range stats {
+	for rel, stat := range fileStats {
 		if index.IsTracked(rel) {
 			if stat.IsDir() {
-				if err := scanWorkspace(cmd, untracked, rel, index); err != nil {
+				if err := scanWorkspace(cmd, untracked, rel, index, stats); err != nil {
 					return err
 				}
+			} else {
+				stats[rel] = stat
 			}
 		} else {
 			trackablefile, err := trackableFile(rel, stat, index, cmd)
@@ -120,4 +123,26 @@ func trackableFile(path string, stat os.FileInfo, index *gitgo.Index, cmd comman
 	}
 
 	return false, nil
+}
+
+func detectWorkspaceChanges(
+	changed datastr.SortedSet,
+	index *gitgo.Index,
+	stats map[string]os.FileInfo,
+) {
+	for name, entry := range index.IndexEntries() {
+		checkIndexEntry(changed, stats, entry, name)
+	}
+}
+
+func checkIndexEntry(
+	changed datastr.SortedSet,
+	stats map[string]os.FileInfo,
+	entry gitgo.IndexEntry,
+	name string,
+) {
+	stat := stats[name]
+	if !entry.StatMatch(stat) {
+		changed.Add(name)
+	}
 }

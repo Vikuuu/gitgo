@@ -202,26 +202,26 @@ repository earlier: remove the file manually to continue.`, err)
 }
 
 func cmdStatusHandler(cmd command) int {
-	// paths, err := gitgo.ListFiles(cmd.repo.Path, cmd.repo.Path)
-	// if err != nil {
-	// 	fmt.Fprintf(cmd.stderr, "error: %v\n", err)
-	// 	return 1
-	// }
-
 	index := gitgo.NewIndex(cmd.repo.Path, cmd.repo.GitPath)
 	index.Load()
-	// trackedFiles := index.ListFiles()
 
+	stats := make(map[string]os.FileInfo)
+	changed := datastr.NewSortedSet()
 	untracked := datastr.NewSortedSet()
 
-	scanWorkspace(cmd, *untracked, "", index)
+	scanWorkspace(cmd, *untracked, "", index, stats)
+	detectWorkspaceChanges(*changed, index, stats)
 
 	out := ""
-	it := untracked.Iterator()
+	it := changed.Iterator()
 	for it.Next() {
-		out += fmt.Sprintf("?? %s\n", it.Key())
+		out += fmt.Sprintf(" M %s\n", it.Key())
+	}
+	iter := untracked.Iterator()
+	for iter.Next() {
+		out += fmt.Sprintf("?? %s\n", iter.Key())
 	}
 
-	fmt.Fprintf(cmd.stdout, "%s\n", out)
+	fmt.Fprintf(cmd.stdout, "%s", out)
 	return 0
 }

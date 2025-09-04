@@ -124,6 +124,48 @@ func tearDown(t *testing.T, cmd command) {
 	assert.NoErrorf(t, err, "teardown failed: err removing test stdout")
 }
 
+func indexWorkspaceChange(t *testing.T) (*commands, command) {
+	cmds, cmd := tearUp(t)
+
+	err := os.MkdirAll(filepath.Join(cmd.repo.Path, "a", "b"), 0755)
+	assert.NoError(t, err)
+
+	f, err := os.Create(filepath.Join(cmd.repo.Path, "1.txt"))
+	assert.NoError(t, err)
+	_, err = f.WriteString("one")
+	assert.NoError(t, err)
+	f.Close()
+
+	f, err = os.Create(filepath.Join(cmd.repo.Path, "a", "2.txt"))
+	assert.NoError(t, err)
+	_, err = f.WriteString("two")
+	assert.NoError(t, err)
+	f.Close()
+
+	f, err = os.Create(filepath.Join(cmd.repo.Path, "a", "b", "3.txt"))
+	assert.NoError(t, err)
+	_, err = f.WriteString("three")
+	assert.NoError(t, err)
+	f.Close()
+
+	cmd.name = "add"
+	cmd.args = []string{"."}
+
+	exitCode, err := cmds.run(cmd)
+	assert.NoErrorf(t, err, "error running `add` command")
+	assert.Equal(t, 0, exitCode)
+
+	cmd.name = "commit"
+	cmd.args = []string{}
+	cmd.stdin.WriteString("commit message")
+
+	exitCode, err = cmds.run(cmd)
+	assert.NoErrorf(t, err, "error running `add` command")
+	assert.Equal(t, 0, exitCode)
+
+	return cmds, cmd
+}
+
 // ---------------  Test functions  -------------------
 
 func TestRepoInitialization(t *testing.T) {
@@ -364,7 +406,7 @@ func TestIncrementalFileAdd(t *testing.T) {
 	_, err = f.WriteString(sen)
 	assert.NoErrorf(t, err, "Error writing dummy data")
 
-	cmd.args = []string{"file2.txt"}
+	cmd.args = []string{"file3.txt"}
 	exitCode, err = cmds.run(cmd)
 
 	// Read standard output and standard error content
@@ -401,6 +443,14 @@ func TestStatusCommand(t *testing.T) {
 	})
 	t.Run("lists untracked directories that indirectly constain files", func(t *testing.T) {
 		testIndirectlyUntrackedDirectories(t)
+	})
+
+	// Test cases for Index/Workspace difference
+	t.Run("prints nothing when no files are changed", func(t *testing.T) {
+		testPrintNothing(t)
+	})
+	t.Run("reports file with modified contents", func(t *testing.T) {
+		testReportModifiedFiles(t)
 	})
 }
 
@@ -724,6 +774,56 @@ func testIndirectlyUntrackedDirectories(t *testing.T) {
 		string(stdoutCon),
 		"?? outer/",
 	))
+
+	tearDown(t, cmd)
+}
+
+func testPrintNothing(t *testing.T) {
+	cmds, cmd := indexWorkspaceChange(t)
+
+	cmd.name = "status"
+	cmd.args = []string{}
+	cmd.stdout = tempFile("stdout")
+
+	exitCode, err := cmds.run(cmd)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, exitCode)
+
+	cmd.stdout.Seek(0, 0)
+	stdoutCon, _ := io.ReadAll(cmd.stdout)
+
+	assert.Equal(t, "", string(stdoutCon))
+
+	tearDown(t, cmd)
+}
+
+func testReportModifiedFiles(t *testing.T) {
+	cmds, cmd := indexWorkspaceChange(t)
+
+	f, err := os.OpenFile(filepath.Join(cmd.repo.Path, "1.txt"), os.O_WRONLY, 0655)
+	assert.NoError(t, err)
+	_, err = f.WriteString("changed")
+	assert.NoError(t, err)
+	f.Close()
+
+	f, err = os.OpenFile(filepath.Join(cmd.repo.Path, "a", "2.txt"), os.O_WRONLY, 0655)
+	assert.NoError(t, err)
+	_, err = f.WriteString("modified")
+	assert.NoError(t, err)
+	f.Close()
+
+	cmd.name = "status"
+	cmd.args = []string{}
+	cmd.stdout = tempFile("stdout")
+
+	code, err := cmds.run(cmd)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, code)
+
+	cmd.stdout.Seek(0, 0)
+	stdoutCon, _ := io.ReadAll(cmd.stdout)
+
+	assert.True(t, strings.Contains(string(stdoutCon), " M 1.txt\n M a/2.txt"))
 
 	tearDown(t, cmd)
 }

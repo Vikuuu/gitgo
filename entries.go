@@ -64,3 +64,7 @@ func NewIndexEntry(name, oid string, stat os.FileInfo) *IndexEntry {
 		Flags:     uint32(flags),
 	}
 }
+
+func (ie IndexEntry) StatMatch(stat os.FileInfo) bool {
+	return ie.Size == 0 || ie.Size == stat.Size()
+}
