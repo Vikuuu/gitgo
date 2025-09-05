@@ -38,16 +38,19 @@ type IndexEntry struct {
 	Flags     uint32
 }
 
+func modeForStat(s os.FileInfo) int {
+	// stat.Mode().IsRegular()
+	if s.Mode()&0111 != 0 {
+		return executableMode
+	} else {
+		return regularMode
+	}
+}
+
 func NewIndexEntry(name, oid string, stat os.FileInfo) *IndexEntry {
 	s := stat.Sys().(*syscall.Stat_t)
 	flags := min(len(name), maxPathSize)
-	var m int
-	// stat.Mode().IsRegular()
-	if stat.Mode()&0111 != 0 {
-		m = executableMode
-	} else {
-		m = regularMode
-	}
+	m := modeForStat(stat)
 	return &IndexEntry{
 		Path:      name,
 		Oid:       oid,
@@ -66,5 +69,5 @@ func NewIndexEntry(name, oid string, stat os.FileInfo) *IndexEntry {
 }
 
 func (ie IndexEntry) StatMatch(stat os.FileInfo) bool {
-	return ie.Size == 0 || ie.Size == stat.Size()
+	return ie.Mode == modeForStat(stat) && (ie.Size == 0 || ie.Size == stat.Size())
 }
