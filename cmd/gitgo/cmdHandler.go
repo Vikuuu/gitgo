@@ -210,7 +210,7 @@ func cmdStatusHandler(cmd command) int {
 	untracked := datastr.NewSortedSet()
 
 	scanWorkspace(cmd, *untracked, "", index, stats)
-	detectWorkspaceChanges(*changed, index, stats)
+	detectWorkspaceChanges(cmd, *changed, index, stats)
 
 	out := ""
 	it := changed.Iterator()

@@ -455,6 +455,9 @@ func TestStatusCommand(t *testing.T) {
 	t.Run("reports file with mode changed", func(t *testing.T) {
 		testReportModeChanged(t)
 	})
+	t.Run("reports modified files without unchanged size", func(t *testing.T) {
+		testReportModifiedWithUnchangedSize(t)
+	})
 }
 
 func statusCommand(t *testing.T) {
@@ -849,6 +852,32 @@ func testReportModeChanged(t *testing.T) {
 	stdoutCon, _ := io.ReadAll(cmd.stdout)
 
 	assert.True(t, strings.Contains(string(stdoutCon), " M 1.txt"))
+
+	tearDown(t, cmd)
+}
+
+func testReportModifiedWithUnchangedSize(t *testing.T) {
+	cmds, cmd := indexWorkspaceChange(t)
+
+	f, err := os.OpenFile(filepath.Join(cmd.repo.Path, "a", "b", "3.txt"), os.O_WRONLY, 0655)
+	assert.NoError(t, err)
+	assert.NotNil(t, f)
+	_, err = f.WriteString("hello")
+	assert.NoError(t, err)
+	f.Close()
+
+	cmd.name = "status"
+	cmd.args = []string{}
+	cmd.stdout = tempFile("stdout")
+
+	code, err := cmds.run(cmd)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, code)
+
+	cmd.stdout.Seek(0, 0)
+	stdoutCon, _ := io.ReadAll(cmd.stdout)
+
+	assert.True(t, strings.Contains(string(stdoutCon), " M a/b/3.txt"))
 
 	tearDown(t, cmd)
 }

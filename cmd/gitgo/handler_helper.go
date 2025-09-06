@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/hex"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -126,23 +128,45 @@ func trackableFile(path string, stat os.FileInfo, index *gitgo.Index, cmd comman
 }
 
 func detectWorkspaceChanges(
+	cmd command,
 	changed datastr.SortedSet,
 	index *gitgo.Index,
 	stats map[string]os.FileInfo,
 ) {
 	for name, entry := range index.IndexEntries() {
-		checkIndexEntry(changed, stats, entry, name)
+		checkIndexEntry(cmd, changed, stats, entry, name)
 	}
 }
 
 func checkIndexEntry(
+	cmd command,
 	changed datastr.SortedSet,
 	stats map[string]os.FileInfo,
 	entry gitgo.IndexEntry,
 	name string,
 ) {
+	// Check's if the file size has changed or something
+	// noticable.
 	stat := stats[name]
 	if !entry.StatMatch(stat) {
+		changed.Add(name)
+		return
+	}
+
+	// If that is not the case we will check the content of
+	// the file in question.
+	f, err := os.OpenFile(filepath.Join(cmd.repo.Path, name), os.O_RDONLY, 0644)
+	if err != nil {
+		panic("err checkIndexEntry opening file: " + err.Error())
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		panic("err checkIndexEntry reading file: " + err.Error())
+	}
+	blob := gitgo.Blob{Data: data}.Init()
+	oid := hex.EncodeToString(gitgo.GetHash(*blob))
+
+	if oid != entry.Oid {
 		changed.Add(name)
 	}
 }

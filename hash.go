@@ -13,3 +13,7 @@ func getHash(prefix, data string) []byte {
 	shaCode := h.Sum(nil)
 	return shaCode
 }
+
+func GetHash(blob Blob) []byte {
+	return getHash(blob.Prefix, string(blob.Data))
+}
