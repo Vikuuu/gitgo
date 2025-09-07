@@ -818,7 +818,7 @@ func testReportModifiedWithUnchangedSize(t *testing.T) {
 	f, err := os.OpenFile(filepath.Join(cmd.repo.Path, "a", "b", "3.txt"), os.O_WRONLY, 0655)
 	assert.NoError(t, err)
 	assert.NotNil(t, f)
-	_, err = f.WriteString("hello")
+	_, err = f.WriteString("meoww")
 	assert.NoError(t, err)
 	f.Close()
 
@@ -833,7 +833,7 @@ func testReportModifiedWithUnchangedSize(t *testing.T) {
 	cmd.stdout.Seek(0, 0)
 	stdoutCon, _ := io.ReadAll(cmd.stdout)
 
-	assert.True(t, strings.Contains(string(stdoutCon), " M a/b/3.txt"))
+	assert.Equal(t, " M a/b/3.txt\n", string(stdoutCon))
 
 	tearDown(t, cmd)
 }
