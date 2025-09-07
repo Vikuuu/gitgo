@@ -6,10 +6,11 @@ import (
 )
 
 const (
-	maxPathSize    = 0xfff
-	regularMode    = 0100644
-	executableMode = 0100755
-	headerFormat   = "a4N2"
+	maxPathSize  = 0xfff
+	headerFormat = "a4N2"
+
+	regularMode    uint32 = 0100644
+	executableMode uint32 = 0100755
 )
 
 type Entries struct {
@@ -31,14 +32,14 @@ type IndexEntry struct {
 	CtimeNsec int64
 	Dev       uint64
 	Ino       uint64
-	Mode      int
+	Mode      uint32
 	Uid       uint32
 	Gid       uint32
 	Size      int64
 	Flags     uint32
 }
 
-func modeForStat(s os.FileInfo) int {
+func modeForStat(s os.FileInfo) uint32 {
 	// stat.Mode().IsRegular()
 	if s.Mode()&0111 != 0 {
 		return executableMode

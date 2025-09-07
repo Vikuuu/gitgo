@@ -58,7 +58,7 @@ func (i *Index) Entries() []Entries {
 		e = append(e, Entries{
 			Path: path,
 			OID:  entry.Oid,
-			Stat: strconv.Itoa(entry.Mode),
+			Stat: strconv.Itoa(int(entry.Mode)),
 		})
 	}
 	return e
@@ -175,7 +175,7 @@ func (i *Index) storeEntryByte(entry []byte) {
 
 	devVal := uint64(binary.BigEndian.Uint32(dev))
 	inoVal := uint64(binary.BigEndian.Uint32(ino))
-	modeVal := int(binary.BigEndian.Uint32(mode))
+	modeVal := uint32(binary.BigEndian.Uint32(mode))
 	uidVal := uint32(binary.BigEndian.Uint32(uid))
 	gidVal := uint32(binary.BigEndian.Uint32(gid))
 	sizeVal := int64(binary.BigEndian.Uint32(size))
