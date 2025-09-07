@@ -212,6 +212,8 @@ func cmdStatusHandler(cmd command) int {
 	scanWorkspace(cmd, *untracked, "", index, stats)
 	detectWorkspaceChanges(cmd, *changed, index, stats)
 
+	index.WriteUpdate()
+
 	out := ""
 	it := changed.Iterator()
 	for it.Next() {

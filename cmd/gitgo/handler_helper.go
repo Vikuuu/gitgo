@@ -134,16 +134,16 @@ func detectWorkspaceChanges(
 	stats map[string]os.FileInfo,
 ) {
 	for name, entry := range index.IndexEntries() {
-		checkIndexEntry(cmd, changed, stats, entry, name)
+		checkIndexEntry(index, changed, stats, &entry, name, cmd.repo.Path)
 	}
 }
 
 func checkIndexEntry(
-	cmd command,
+	index *gitgo.Index,
 	changed datastr.SortedSet,
 	stats map[string]os.FileInfo,
-	entry gitgo.IndexEntry,
-	name string,
+	entry *gitgo.IndexEntry,
+	name, path string,
 ) {
 	// Check's if the file size has changed or something
 	// noticable.
@@ -153,9 +153,14 @@ func checkIndexEntry(
 		return
 	}
 
+	// Check with the time stamp
+	if entry.TimeMatch(stat) {
+		return
+	}
+
 	// If that is not the case we will check the content of
 	// the file in question.
-	f, err := os.OpenFile(filepath.Join(cmd.repo.Path, name), os.O_RDONLY, 0644)
+	f, err := os.OpenFile(filepath.Join(path, name), os.O_RDONLY, 0644)
 	if err != nil {
 		panic("err checkIndexEntry opening file: " + err.Error())
 	}
@@ -166,7 +171,12 @@ func checkIndexEntry(
 	blob := gitgo.Blob{Data: data}.Init()
 	oid := hex.EncodeToString(gitgo.GetHash(*blob))
 
-	if oid != entry.Oid {
+	if oid == entry.Oid {
+		// If the file content is same, but the file has different
+		// metadata on the disk, update them so that we can
+		// use them next time.
+		index.UpdateEntryStat(entry, stat)
+	} else {
 		changed.Add(name)
 	}
 }

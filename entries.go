@@ -72,3 +72,25 @@ func NewIndexEntry(name, oid string, stat os.FileInfo) *IndexEntry {
 func (ie IndexEntry) StatMatch(stat os.FileInfo) bool {
 	return ie.Mode == modeForStat(stat) && (ie.Size == 0 || ie.Size == stat.Size())
 }
+
+func (ie IndexEntry) TimeMatch(stat os.FileInfo) bool {
+	s := stat.Sys().(*syscall.Stat_t)
+	return ie.Ctime == s.Ctim.Sec &&
+		ie.CtimeNsec == s.Ctim.Nsec &&
+		ie.Mtime == s.Mtim.Sec &&
+		ie.MtimeNsec == s.Mtim.Nsec
+}
+
+func (ie *IndexEntry) updateStat(stat os.FileInfo) {
+	s := stat.Sys().(*syscall.Stat_t)
+	ie.Ctime = s.Ctim.Sec
+	ie.CtimeNsec = s.Ctim.Nsec
+	ie.Mtime = s.Mtim.Sec
+	ie.MtimeNsec = s.Mtim.Nsec
+	ie.Dev = s.Dev
+	ie.Ino = s.Ino
+	ie.Mode = s.Mode
+	ie.Uid = s.Uid
+	ie.Gid = s.Gid
+	ie.Size = s.Size
+}

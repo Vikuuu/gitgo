@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -458,6 +459,9 @@ func TestStatusCommand(t *testing.T) {
 	t.Run("reports modified files without unchanged size", func(t *testing.T) {
 		testReportModifiedWithUnchangedSize(t)
 	})
+	t.Run("prints nothing if file is touched", func(t *testing.T) {
+		testReportNothingOnFileTouched(t)
+	})
 }
 
 func statusCommand(t *testing.T) {
@@ -495,13 +499,14 @@ func statusCommand(t *testing.T) {
 }
 
 func testListFileAsUntrackedNotInIndex(t *testing.T) {
-	cmds, cmd := tearUp(t)
+	cmds, cmd := indexWorkspaceChange(t)
 
-	_, err := os.Create(filepath.Join(cmd.pwd, "committed.txt"))
+	_, err := os.Create(filepath.Join(cmd.pwd, "file.txt"))
 	assert.NoErrorf(t, err, "Error creating file in test dir")
 
-	cmd.name = "add"
-	cmd.args = []string{"."}
+	cmd.name = "status"
+	cmd.stdout = tempFile("stdout")
+	cmd.stderr = tempFile("stderr")
 
 	exitCode, err := cmds.run(cmd)
 
@@ -509,51 +514,6 @@ func testListFileAsUntrackedNotInIndex(t *testing.T) {
 	cmd.stderr.Seek(0, 0)
 	stdoutCon, _ := io.ReadAll(cmd.stdout)
 	stderrCon, _ := io.ReadAll(cmd.stderr)
-
-	assert.NoErrorf(t, err, "Error running `add` command")
-	assert.Equal(t, 0, exitCode)
-
-	if err != nil || exitCode != 0 {
-		if err != nil {
-			t.Logf("ERROR: %v", err)
-		}
-		t.Logf("STDOUT: %s", stdoutCon)
-		t.Logf("STDERR: %s", stderrCon)
-	}
-
-	cmd.name = "commit"
-	cmd.args = []string{}
-	cmd.stdin.WriteString("commit message")
-
-	exitCode, err = cmds.run(cmd)
-
-	cmd.stdout.Seek(0, 0)
-	cmd.stderr.Seek(0, 0)
-	stdoutCon, _ = io.ReadAll(cmd.stdout)
-	stderrCon, _ = io.ReadAll(cmd.stderr)
-
-	assert.NoErrorf(t, err, "Error running `commit` command")
-	assert.Equal(t, 0, exitCode)
-
-	if err != nil || exitCode != 0 {
-		if err != nil {
-			t.Logf("ERROR: %v", err)
-		}
-		t.Logf("STDOUT: %s", stdoutCon)
-		t.Logf("STDERR: %s", stderrCon)
-	}
-
-	_, err = os.Create(filepath.Join(cmd.pwd, "file.txt"))
-	assert.NoErrorf(t, err, "Error creating file in test dir")
-
-	cmd.name = "status"
-
-	exitCode, err = cmds.run(cmd)
-
-	cmd.stdout.Seek(0, 0)
-	cmd.stderr.Seek(0, 0)
-	stdoutCon, _ = io.ReadAll(cmd.stdout)
-	stderrCon, _ = io.ReadAll(cmd.stderr)
 
 	assert.NoErrorf(t, err, "Error running `status` command")
 	assert.Equal(t, 0, exitCode)
@@ -566,16 +526,12 @@ func testListFileAsUntrackedNotInIndex(t *testing.T) {
 		t.Logf("STDERR: %s", stderrCon)
 	}
 
-	assert.Truef(
-		t,
-		strings.Contains(string(stdoutCon), "?? file.txt"),
-		"Expected file not present in the output",
-	)
-	assert.Falsef(
-		t,
-		strings.Contains(string(stdoutCon), "?? committed.txt"),
-		"This file should not be in the output",
-	)
+	assert.Equalf(t, "?? file.txt\n", string(stdoutCon), "Expected file not present in the output")
+	// assert.Falsef(
+	// 	t,
+	// 	strings.Contains(string(stdoutCon), "?? committed.txt"),
+	// 	"This file should not be in the output",
+	// )
 	// t.Log(string(stdoutCon))
 
 	tearDown(t, cmd)
@@ -878,6 +834,27 @@ func testReportModifiedWithUnchangedSize(t *testing.T) {
 	stdoutCon, _ := io.ReadAll(cmd.stdout)
 
 	assert.True(t, strings.Contains(string(stdoutCon), " M a/b/3.txt"))
+
+	tearDown(t, cmd)
+}
+
+func testReportNothingOnFileTouched(t *testing.T) {
+	cmds, cmd := indexWorkspaceChange(t)
+
+	exec.Command("touch", filepath.Join(cmd.repo.Path, "1.txt"))
+
+	cmd.name = "status"
+	cmd.args = []string{}
+	cmd.stdout = tempFile("stdout")
+
+	code, err := cmds.run(cmd)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, code)
+
+	cmd.stdout.Seek(0, 0)
+	stdoutCon, _ := io.ReadAll(cmd.stdout)
+
+	assert.Equal(t, string(stdoutCon), "")
 
 	tearDown(t, cmd)
 }

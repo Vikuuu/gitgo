@@ -315,6 +315,14 @@ func (i *Index) WriteUpdate() (bool, error) {
 		return false, i.lockfile.rollback()
 	}
 
+	b, err := i.lockfile.holdForUpdate()
+	if err != nil {
+		return false, err
+	}
+	if !b {
+		return false, nil
+	}
+
 	buf := new(bytes.Buffer) // Makes a new buffer and returns its pointer
 	writeHeader(buf, len(i.entries))
 	it := i.keys.Iterator()
@@ -453,4 +461,9 @@ func (i *Index) IsTracked(path string) bool {
 
 func (i *Index) IndexEntries() map[string]IndexEntry {
 	return i.entries
+}
+
+func (i *Index) UpdateEntryStat(entry *IndexEntry, stat os.FileInfo) {
+	entry.updateStat(stat)
+	i.changed = true
 }
