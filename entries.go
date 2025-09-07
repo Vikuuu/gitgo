@@ -40,6 +40,9 @@ type IndexEntry struct {
 }
 
 func modeForStat(s os.FileInfo) uint32 {
+	if s == nil {
+		return uint32(0)
+	}
 	// stat.Mode().IsRegular()
 	if s.Mode()&0111 != 0 {
 		return executableMode

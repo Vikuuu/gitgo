@@ -2,12 +2,20 @@ package main
 
 import (
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/Vikuuu/gitgo"
 	"github.com/Vikuuu/gitgo/internal/datastr"
+)
+
+type WorkspaceUpdateType int
+
+const (
+	WorkspaceModified WorkspaceUpdateType = iota
+	WorkspaceDeleted
 )
 
 func scanWorkspace(
@@ -129,18 +137,20 @@ func trackableFile(path string, stat os.FileInfo, index *gitgo.Index, cmd comman
 
 func detectWorkspaceChanges(
 	cmd command,
-	changed datastr.SortedSet,
+	changed *datastr.SortedSet,
+	changes map[string]WorkspaceUpdateType,
 	index *gitgo.Index,
 	stats map[string]os.FileInfo,
 ) {
 	for name, entry := range index.IndexEntries() {
-		checkIndexEntry(index, changed, stats, &entry, name, cmd.repo.Path)
+		checkIndexEntry(index, changed, changes, stats, &entry, name, cmd.repo.Path)
 	}
 }
 
 func checkIndexEntry(
 	index *gitgo.Index,
-	changed datastr.SortedSet,
+	changed *datastr.SortedSet,
+	changes map[string]WorkspaceUpdateType,
 	stats map[string]os.FileInfo,
 	entry *gitgo.IndexEntry,
 	name, path string,
@@ -148,7 +158,13 @@ func checkIndexEntry(
 	// Check's if the file size has changed or something
 	// noticable.
 	stat := stats[name]
+	if stat == nil {
+		recordChange(changed, changes, entry.Path, WorkspaceDeleted)
+		return
+	}
+
 	if !entry.StatMatch(stat) {
+		recordChange(changed, changes, entry.Path, WorkspaceModified)
 		changed.Add(name)
 		return
 	}
@@ -177,6 +193,50 @@ func checkIndexEntry(
 		// use them next time.
 		index.UpdateEntryStat(entry, stat)
 	} else {
-		changed.Add(name)
+		recordChange(changed, changes, entry.Path, WorkspaceModified)
 	}
+}
+
+func recordChange(
+	changed *datastr.SortedSet,
+	changes map[string]WorkspaceUpdateType,
+	path string,
+	typ WorkspaceUpdateType,
+) {
+	changed.Add(path)
+	changes[path] = typ
+}
+
+func printResult(
+	cmd command,
+	changed, untracked *datastr.SortedSet,
+	changes map[string]WorkspaceUpdateType,
+) {
+	out := ""
+	it := changed.Iterator()
+	for it.Next() {
+		status := statusFor(it.Key(), changes)
+		out += fmt.Sprintf(" %c %s\n", status, it.Key())
+	}
+
+	iter := untracked.Iterator()
+	for iter.Next() {
+		out += fmt.Sprintf("?? %s\n", iter.Key())
+	}
+
+	fmt.Fprintf(cmd.stdout, "%s", out)
+}
+
+func statusFor(path string, changes map[string]WorkspaceUpdateType) rune {
+	change := changes[path]
+	res := ' '
+
+	switch change {
+	case WorkspaceModified:
+		res = 'M'
+	case WorkspaceDeleted:
+		res = 'D'
+	}
+
+	return res
 }

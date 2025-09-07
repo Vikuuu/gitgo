@@ -207,23 +207,14 @@ func cmdStatusHandler(cmd command) int {
 
 	stats := make(map[string]os.FileInfo)
 	changed := datastr.NewSortedSet()
+	changes := make(map[string]WorkspaceUpdateType)
 	untracked := datastr.NewSortedSet()
 
 	scanWorkspace(cmd, *untracked, "", index, stats)
-	detectWorkspaceChanges(cmd, *changed, index, stats)
+	detectWorkspaceChanges(cmd, changed, changes, index, stats)
 
 	index.WriteUpdate()
 
-	out := ""
-	it := changed.Iterator()
-	for it.Next() {
-		out += fmt.Sprintf(" M %s\n", it.Key())
-	}
-	iter := untracked.Iterator()
-	for iter.Next() {
-		out += fmt.Sprintf("?? %s\n", iter.Key())
-	}
-
-	fmt.Fprintf(cmd.stdout, "%s", out)
+	printResult(cmd, changed, untracked, changes)
 	return 0
 }

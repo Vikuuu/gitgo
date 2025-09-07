@@ -462,6 +462,12 @@ func TestStatusCommand(t *testing.T) {
 	t.Run("prints nothing if file is touched", func(t *testing.T) {
 		testReportNothingOnFileTouched(t)
 	})
+	t.Run("reports deleted file", func(t *testing.T) {
+		testReportDeleteFile(t)
+	})
+	t.Run("reports files in a deleted directories", func(t *testing.T) {
+		testReportDeleteFilesInDir(t)
+	})
 }
 
 func statusCommand(t *testing.T) {
@@ -855,6 +861,50 @@ func testReportNothingOnFileTouched(t *testing.T) {
 	stdoutCon, _ := io.ReadAll(cmd.stdout)
 
 	assert.Equal(t, string(stdoutCon), "")
+
+	tearDown(t, cmd)
+}
+
+func testReportDeleteFile(t *testing.T) {
+	cmds, cmd := indexWorkspaceChange(t)
+
+	err := os.Remove(filepath.Join(cmd.repo.Path, "a", "2.txt"))
+	assert.NoError(t, err)
+
+	cmd.name = "status"
+	cmd.args = []string{}
+	cmd.stdout = tempFile("stdout")
+
+	code, err := cmds.run(cmd)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, code)
+
+	cmd.stdout.Seek(0, 0)
+	stdoutCon, err := io.ReadAll(cmd.stdout)
+
+	assert.Equal(t, " D a/2.txt\n", string(stdoutCon))
+
+	tearDown(t, cmd)
+}
+
+func testReportDeleteFilesInDir(t *testing.T) {
+	cmds, cmd := indexWorkspaceChange(t)
+
+	err := os.RemoveAll(filepath.Join(cmd.repo.Path, "a"))
+	assert.NoError(t, err)
+
+	cmd.name = "status"
+	cmd.args = []string{}
+	cmd.stdout = tempFile("stdout")
+
+	code, err := cmds.run(cmd)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, code)
+
+	cmd.stdout.Seek(0, 0)
+	stdoutCon, err := io.ReadAll(cmd.stdout)
+
+	assert.Equal(t, " D a/2.txt\n D a/b/3.txt\n", string(stdoutCon))
 
 	tearDown(t, cmd)
 }
