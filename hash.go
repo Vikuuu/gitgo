@@ -1,19 +1,9 @@
 package gitgo
 
-import (
-	"crypto/sha1"
-	"io"
-)
+import "crypto/sha1"
 
-func getHash(prefix, data string) []byte {
+func Hash(data []byte) []byte {
 	h := sha1.New()
-	p := append([]byte(prefix), byte(0))
-	io.WriteString(h, string(p))
-	io.WriteString(h, data)
-	shaCode := h.Sum(nil)
-	return shaCode
-}
-
-func GetHash(blob Blob) []byte {
-	return getHash(blob.Prefix, string(blob.Data))
+	h.Write(data)
+	return h.Sum(nil)
 }

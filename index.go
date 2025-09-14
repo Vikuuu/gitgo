@@ -425,10 +425,7 @@ func writeIndexEntry(entry IndexEntry) ([]byte, error) {
 		return nil, fmt.Errorf("writing oid: %w", err)
 	}
 
-	nameLen := len(entry.Path)
-	if nameLen > 0xFFF {
-		nameLen = 0xFFF
-	}
+	nameLen := min(len(entry.Path), 0xFFF)
 	flagVal := (uint16(entry.Flags) & 0xF000) | uint16(nameLen&0x0FFF)
 	if err := writeU16(flagVal, "flag"); err != nil {
 		return nil, err

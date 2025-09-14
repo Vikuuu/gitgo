@@ -5,22 +5,25 @@ import (
 	"compress/zlib"
 	"fmt"
 	"io"
-	"slices"
 )
 
-func getCompressBuf(prefix, data []byte) bytes.Buffer {
-	var buf bytes.Buffer
-	prefix = append(prefix, byte(0))
-	w := zlib.NewWriter(&buf)
-	w.Write(slices.Concat(prefix, data))
-	w.Close()
-	return buf
+func Compress(data []byte) []byte {
+	var b bytes.Buffer
+	w := zlib.NewWriter(&b)
+
+	if _, err := w.Write(data); err != nil {
+		panic("error compressing: " + err.Error())
+	}
+	if err := w.Close(); err != nil {
+		panic("error closing zlib comp: " + err.Error())
+	}
+
+	return b.Bytes()
 }
 
-func GetDecompress(data []byte) ([]byte, error) {
+func Decompress(data []byte) ([]byte, error) {
 	var d bytes.Buffer
-	b := bytes.NewReader(data)
-	r, err := zlib.NewReader(b)
+	r, err := zlib.NewReader(&d)
 	if err != nil {
 		return nil, err
 	}

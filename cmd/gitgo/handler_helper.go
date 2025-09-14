@@ -184,8 +184,9 @@ func checkIndexEntry(
 	if err != nil {
 		panic("err checkIndexEntry reading file: " + err.Error())
 	}
-	blob := gitgo.Blob{Data: data}.Init()
-	oid := hex.EncodeToString(gitgo.GetHash(*blob))
+	// blob := gitgo.Blob{Data: data}.Init()
+	blob := gitgo.BlobData(data)
+	oid := hex.EncodeToString(gitgo.Hash(blob))
 
 	if oid == entry.Oid {
 		// If the file content is same, but the file has different

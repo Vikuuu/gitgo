@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -24,17 +23,6 @@ func RemoveIgnoreFiles(input []os.DirEntry, ignore []string) []os.DirEntry {
 	}
 
 	return result
-}
-
-func createTempFile(dirName, dbPath string) (*os.File, string, error) {
-	tFileName := generateGitTempFileName(".temp-obj-")
-	temp := filepath.Join(dbPath, dirName, tFileName)
-	t, err := os.OpenFile(temp, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0644)
-	if err != nil {
-		return nil, "", fmt.Errorf("Err creating temp file: %s", err)
-	}
-
-	return t, temp, nil
 }
 
 func generateGitTempFileName(prefix string) string {

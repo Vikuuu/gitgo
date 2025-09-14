@@ -7,12 +7,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 )
 
-var GITGO_IGNORE = []string{".", "..", ".gitgo"}
+type BlobType int
+
+const (
+	TypeFile BlobType = iota
+	TypeTree
+	TypeCommit
+)
 
 var G_ignore = map[string]bool{
 	".":      true,
@@ -20,45 +25,77 @@ var G_ignore = map[string]bool{
 	".gitgo": true,
 }
 
-type Author struct {
-	Name      string
-	Email     string
-	Timestamp time.Time
+type Database struct {
+	BlobData []byte
+	DbPath   string
+	FilePath string
+	Object   map[string]string
 }
 
-type Commit struct {
-	Parent  string
-	TreeOID string
-	Author  string
-	Message string
-	Data    string
-	Prefix  string
-	DBPath  string
-}
-
-func (a Author) New() string {
-	unixTimeStamp := a.Timestamp.Unix()
-	utcOffset := getUTCOffset(a.Timestamp)
-	return fmt.Sprintf("%s <%s> %d %s", a.Name, a.Email, unixTimeStamp, utcOffset)
-}
-
-func (c Commit) New() *Commit {
-	lines := []string{}
-	lines = append(lines, fmt.Sprintf("tree %s", c.TreeOID))
-	if c.Parent != "" {
-		lines = append(lines, fmt.Sprintf("parent %s", c.Parent))
+func NewDatabase(dbPath string) *Database {
+	return &Database{
+		DbPath: dbPath,
+		Object: make(map[string]string),
 	}
-	lines = append(lines, fmt.Sprintf("author %s", c.Author))
-	lines = append(lines, fmt.Sprintf("comitter %s", c.Author))
-	lines = append(lines, "")
-	lines = append(lines, c.Message)
-	c.Data = strings.Join(lines, "\n")
-	c.Prefix = fmt.Sprintf(`commit %d`, len(c.Data))
-	return &c
 }
 
-func (c Commit) Type() string {
-	return "commit"
+func (d *Database) Data(blobType BlobType, data []byte) {
+	var buf bytes.Buffer
+	buf.Write(GetPrefix(blobType, len(data)))
+	buf.WriteByte(byte(0))
+	buf.Write(data)
+
+	d.BlobData = buf.Bytes()
+}
+
+func (d *Database) Store() (string, error) {
+	sha := Hash(d.BlobData)
+	oid := hex.EncodeToString(sha)
+	return oid, d.Write(oid)
+}
+
+func (d *Database) Write(oid string) error {
+	compressData := Compress(d.BlobData)
+	d.objectPath(oid)
+	folderPath := filepath.Join(d.DbPath, oid[:2])
+
+	err := StoreObject(compressData, folderPath, d.FilePath)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Database) objectPath(oid string) {
+	d.FilePath = filepath.Join(d.DbPath, oid[:2], oid[2:])
+}
+
+func (d *Database) Load(oid string) {
+	d.Object[oid] = d.ReadObject(oid)
+}
+
+func (d *Database) ReadObject(oid string) string {
+	return ""
+}
+
+func AuthorData(name, email string, t time.Time) string {
+	utcOffset := getUTCOffset(t)
+	return fmt.Sprintf("%s <%s> %d %s", name, email, t.Unix(), utcOffset)
+}
+
+func CommitData(parent, treeOID, author, message string) []byte {
+	data := bytes.Buffer{}
+	data.WriteString(fmt.Sprintf("tree %s\n", treeOID))
+	if parent != "" {
+		data.WriteString(fmt.Sprintf("parent %s\n", parent))
+	}
+	data.WriteString(fmt.Sprintf("author %s\n", author))
+	data.WriteString(fmt.Sprintf("comitter %s\n", author))
+	data.WriteString("\n")
+	data.WriteString(message)
+
+	return data.Bytes()
 }
 
 func ReadStdinMsg(file *os.File) string {
@@ -66,100 +103,36 @@ func ReadStdinMsg(file *os.File) string {
 	return string(msg)
 }
 
-type Blob struct {
-	Prefix string
-	Data   []byte
-	DBPath string
-}
-
-type TreeBlob struct {
-	Prefix string
-	Data   bytes.Buffer
-	DBPath string
-}
-
-func (b Blob) Init() *Blob {
-	prefix := fmt.Sprintf(`blob %d`, len(b.Data))
-	b.Prefix = prefix
-	return &b
-}
-
-func (t TreeBlob) Init() *TreeBlob {
-	prefix := fmt.Sprintf(`tree %d`, t.Data.Len())
-	t.Prefix = prefix
-	return &t
-}
-
-func (b *Blob) Store() (string, error) {
-	return StoreBlobObject(b.Data, b.Prefix, b.DBPath)
-}
-
-func (t *TreeBlob) Store() (string, error) {
-	return StoreTreeObject(t.Data, t.Prefix, t.DBPath)
-}
-
-func (c *Commit) Store() (string, error) {
-	return StoreCommitObject(c.Data, c.Prefix, c.DBPath)
-}
-
-func StoreTreeObject(treeEntry bytes.Buffer, prefix string, dbPath string) (string, error) {
-	// treePrefix := fmt.Sprintf(`tree %d`, treeEntry.Len())
-	treeSHA := getHash(prefix, treeEntry.String())
-	hexTreeSha := hex.EncodeToString(treeSHA)
-	// fmt.Printf("Tree: %s", hexTreeSha)
-	tree := getCompressBuf([]byte(prefix), treeEntry.Bytes())
-	folderPath := filepath.Join(dbPath, hexTreeSha[:2])
-	permPath := filepath.Join(dbPath, hexTreeSha[:2], hexTreeSha[2:])
-	err := StoreObject(tree, prefix, folderPath, permPath)
-	if err != nil {
-		return "", err
-	}
-	return hexTreeSha, nil
-}
-
-func StoreBlobObject(blobData []byte, prefix, dbPath string) (string, error) {
-	// blobPrefix := fmt.Sprintf(`blob %d`, len(blobData))
-
-	// getting the SHA-1
-	blobSHA := getHash(prefix, string(blobData)) // []byte
-	blob := getCompressBuf([]byte(prefix), blobData)
-	hexBlobSha := hex.EncodeToString(blobSHA)
-	folderPath := filepath.Join(dbPath, hexBlobSha[:2])
-	permPath := filepath.Join(dbPath, hexBlobSha[:2], hexBlobSha[2:])
-	err := StoreObject(blob, prefix, folderPath, permPath)
-	if err != nil {
-		return "", err
+func GetPrefix(blob BlobType, size int) []byte {
+	res := ""
+	switch blob {
+	case TypeFile:
+		res = fmt.Sprintf(`blob %d`, size)
+	case TypeTree:
+		res = fmt.Sprintf(`tree %d`, size)
+	case TypeCommit:
+		res = fmt.Sprintf(`commit %d`, size)
+	default:
+		panic("undefined blob type")
 	}
 
-	return hexBlobSha, nil
+	return []byte(res)
 }
 
-func StoreCommitObject(commitData, prefix, dbPath string) (string, error) {
-	// commitPrefix := fmt.Sprintf(`commit %d`, len(commitData))
-	commitHash := getHash(prefix, commitData)
-	commit := getCompressBuf([]byte(prefix), []byte(commitData))
-	hexCommitHash := hex.EncodeToString(commitHash)
-	folderPath := filepath.Join(dbPath, hexCommitHash[:2])
-	permPath := filepath.Join(dbPath, hexCommitHash[:2], hexCommitHash[2:])
-	err := StoreObject(commit, prefix, folderPath, permPath)
-	if err != nil {
-		return "", err
-	}
-
-	return hexCommitHash, nil
+func BlobData(data []byte) []byte {
+	prefix := GetPrefix(TypeFile, len(data))
+	data = append(data, []byte(prefix)...)
+	return data
 }
 
-func StoreObject(
-	data bytes.Buffer,
-	prefix, folderPath, PermPath string,
-) error {
+func StoreObject(data []byte, folderPath, filePath string) error {
 	err := os.MkdirAll(folderPath, 0755)
 	if err != nil {
 		return err
 	}
 
 	// if the file exists exit
-	_, err = os.Stat(PermPath)
+	_, err = os.Stat(filePath)
 	if os.IsExist(err) {
 		return nil
 	}
@@ -178,13 +151,13 @@ func StoreObject(
 	defer tf.Close()
 
 	// Write to temp file
-	_, err = tf.Write(data.Bytes())
+	_, err = tf.Write(data)
 	if err != nil {
 		return fmt.Errorf("writing to temp file: %s", err)
 	}
 
 	// rename the file
-	os.Rename(tempPath, PermPath)
+	os.Rename(tempPath, filePath)
 	return nil
 }
 
@@ -198,42 +171,3 @@ func FileMode(file string) (uint32, error) {
 	stat := f.Sys().(*syscall.Stat_t)
 	return stat.Mode, nil
 }
-
-// func StoreOnDisk(path, rootPath, dbPath string) ([]Entries, error) {
-// 	files, err := ListFiles(path, rootPath)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	var entries []Entries
-// 	for _, f := range files {
-// 		err = blobStore(f, rootPath, dbPath, &entries)
-// 		if err != nil {
-// 			return nil, fmt.Errorf("from storeOndisk %s", err)
-// 		}
-// 	}
-//
-// 	return entries, nil
-// }
-//
-// func blobStore(f, rootPath, dbPath string, entries *[]Entries) error {
-// 	fp := filepath.Join(rootPath, f)
-// 	data, err := os.ReadFile(fp)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	blob := Blob{Data: data, DBPath: dbPath}.Init()
-// 	fileMode, err := FileMode(fp)
-// 	if err != nil {
-// 		return err
-// 	}
-//
-// 	hash, err := blob.Store()
-// 	entry := Entries{
-// 		Path: f,
-// 		OID:  hash,
-// 		Stat: strconv.FormatUint(uint64(fileMode), 8),
-// 	}
-//
-// 	*entries = append(*entries, entry)
-// 	return nil
-// }

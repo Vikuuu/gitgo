@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-type Node interface{}
+type Node any
 
 type Tree struct {
 	Nodes map[string]Node
@@ -52,20 +52,18 @@ func BuildTree(entries []Entries) *Tree {
 	return root
 }
 
-func TraverseTree(tree *Tree, dbPath string) ([]Entries, error) {
+func TraverseTree(database *Database, tree *Tree, dbPath string) ([]Entries, error) {
 	entry := []Entries{}
 	for name, node := range tree.Nodes {
 		switch n := node.(type) {
 		case *Tree:
-			e, err := TraverseTree(n, dbPath)
+			e, err := TraverseTree(database, n, dbPath)
 			if err != nil {
 				return nil, err
 			}
-			tree := TreeBlob{
-				Data:   CreateTreeEntry(e),
-				DBPath: dbPath,
-			}.Init()
-			hash, err := tree.Store()
+
+			database.Data(TypeTree, CreateTreeEntry(e))
+			hash, err := database.Store()
 			if err != nil {
 				return nil, err
 			}
@@ -80,7 +78,7 @@ func TraverseTree(tree *Tree, dbPath string) ([]Entries, error) {
 	return entry, nil
 }
 
-func CreateTreeEntry(entries []Entries) bytes.Buffer {
+func CreateTreeEntry(entries []Entries) []byte {
 	var buf bytes.Buffer
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Path < entries[j].Path
@@ -95,5 +93,5 @@ func CreateTreeEntry(entries []Entries) bytes.Buffer {
 		}
 		buf.Write(rawOID)
 	}
-	return buf
+	return buf.Bytes()
 }

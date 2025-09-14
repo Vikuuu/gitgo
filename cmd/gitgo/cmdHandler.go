@@ -38,36 +38,29 @@ func cmdInitHandler(cmd command) int {
 	return 0
 }
 
+// The command `commit` reads the index file and then
+// creates and merkel tree, and store all the sub-trees on the way
+// The blob files are already being stored during the
+// `add` command
 func cmdCommitHandler(cmd command) int {
-	// The command `commit` reads the index file and then
-	// creates and merkel tree, and store all the sub-trees on the way
-	// The blob files are already being stored during the
-	// `add` command
+	database := gitgo.NewDatabase(cmd.repo.Database)
 	index := gitgo.NewIndex(cmd.repo.Path, cmd.repo.GitPath)
 	index.Load()
 	entries := index.Entries()
 	tree := gitgo.BuildTree(entries)
-	e, err := gitgo.TraverseTree(tree, cmd.repo.Database)
+	e, err := gitgo.TraverseTree(database, tree, cmd.repo.Database)
 	if err != nil {
 		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
 	}
-	// now store the root tree
-	rootTree := gitgo.TreeBlob{
-		Data:   gitgo.CreateTreeEntry(e),
-		DBPath: cmd.repo.Database,
-	}.Init()
-	treeHash, err := rootTree.Store()
+	treeEntry := gitgo.CreateTreeEntry(e)
+	database.Data(gitgo.TypeTree, treeEntry)
+	treeHash, err := database.Store()
 	if err != nil {
 		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
 		return 1
 	}
 
-	// storing commit object
-	author := gitgo.Author{
-		Name:      cmd.env["name"],
-		Email:     cmd.env["email"],
-		Timestamp: time.Now(),
-	}.New()
+	author := gitgo.AuthorData(cmd.env["name"], cmd.env["email"], time.Now())
 	message := gitgo.ReadStdinMsg(cmd.stdin)
 	refs := gitgo.RefInitialize(cmd.repo.Refs)
 	parent := refs.ReadHead()
@@ -77,31 +70,15 @@ func cmdCommitHandler(cmd command) int {
 		is_root = "(root-commit) "
 	}
 
-	commitData := gitgo.Commit{
-		Parent:  parent,
-		TreeOID: treeHash,
-		Author:  author,
-		Message: message,
-		DBPath:  cmd.repo.Database,
-	}.New()
-	cHash, err := commitData.Store()
+	commitData := gitgo.CommitData(parent, treeHash, author, message)
+	database.Data(gitgo.TypeCommit, commitData)
+	cHash, err := database.Store()
 	if err != nil {
 		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
 		return 1
 	}
 	refs.UpdateHead([]byte(cHash))
 	fmt.Fprintf(cmd.stdout, "%s %s %s\n", is_root, cHash, gitgo.FirstLine(message))
-
-	// Clear the file after the commit is done
-	// err = os.Remove(cmd.repo.Index)
-	// if err != nil {
-	// 	if os.IsNotExist(err) {
-	// 		return 0
-	// 	}
-
-	// 	fmt.Fprintf(cmd.stderr, "error: %v\n", err)
-	// 	return 1
-	// }
 
 	return 0
 }
@@ -120,7 +97,7 @@ func cmdCatFileHandler(cmd command) int {
 		return 1
 	}
 
-	data, err := gitgo.GetDecompress(b)
+	data, err := gitgo.Decompress(b)
 	if err != nil {
 		fmt.Fprintf(cmd.stderr, "error: %v\n", err)
 		return 1
@@ -131,8 +108,7 @@ func cmdCatFileHandler(cmd command) int {
 }
 
 func cmdAddHandler(cmd command) int {
-	// gitgo.InitGlobals()
-	// index := gitgo.NewIndex()
+	database := gitgo.NewDatabase(cmd.repo.Database)
 	_, index, err := gitgo.IndexHoldForUpdate(cmd.repo.Path, cmd.repo.GitPath)
 	if err != nil {
 		fmt.Fprintf(cmd.stderr, `
@@ -175,11 +151,8 @@ repository earlier: remove the file manually to continue.`, err)
 			return 1
 		}
 
-		blob := gitgo.Blob{
-			Data:   data,
-			DBPath: cmd.repo.Database,
-		}.Init()
-		hash, err := blob.Store()
+		database.Data(gitgo.TypeFile, data)
+		hash, err := database.Store()
 		if err != nil {
 			fmt.Fprintf(cmd.stderr, "error: %v\n", err)
 			return 1
